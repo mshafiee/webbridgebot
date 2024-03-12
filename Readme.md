@@ -71,13 +71,9 @@ To run the bot, you need to provide it with several command line flags:
 
 Replace the values for `apiID`, `apiHash`, `botToken`, and `baseURL` with your specific details.
 
-## Additional Information
-
-For more information on configuring and extending WebBridgeBot, refer to the source code documentation and the TDLib API documentation.
-
 ## Contributing
 
-Contributions to WebBridgeBot are welcome. Please follow the project's contributing guidelines when submitting issues or pull requests.
+Contributions to WebBridgeBot are welcome.
 
 ## License
 
