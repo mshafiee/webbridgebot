@@ -1,6 +1,6 @@
 # WebBridgeBot
 
-WebBridgeBot is a Telegram bot designed to bridge web content with Telegram. It allows users to interact with web services directly from Telegram. This README provides instructions on how to build and run the WebBridgeBot.
+WebBridgeBot is a Telegram bot designed to effortlessly stream media content from Telegram directly to a web browser. Users have the capability to forward their video and audio files to the bot, which then generates a web URL. This URL hosts a webpage that communicates with WebBridgeBot via WebSocket. Instantly upon receiving the forwarded message, it begins playback of the media on a web browser. This functionality simplifies the process of forwarding and playing media files from Telegram on various devices such as TVs, game consoles, and web kiosks. The README below provides detailed instructions on how to set up and operate WebBridgeBot.
 
 ## Features
 
