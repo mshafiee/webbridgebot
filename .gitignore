@@ -19,3 +19,9 @@
 
 # Go workspace file
 go.work
+
+.tdlib/
+tdlib/
+tdlib_tdlib_install
+webBridgeBot
+
