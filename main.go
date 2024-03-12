@@ -494,7 +494,6 @@ func (b *TelegramBot) startWebServer() {
 }
 
 func (b *TelegramBot) handleFileDownload(w http.ResponseWriter, r *http.Request) {
-
 	vars := mux.Vars(r)
 	chatIDStr, fileIDStr := vars["chatID"], vars["fileID"]
 
