@@ -442,7 +442,8 @@ func (b *TelegramBot) handleCommand(message *client.Message) {
 	// Check if the command is '/start'
 	if strings.HasPrefix(message.Content.(*client.MessageText).Text.Text, "/start") {
 		text = "Welcome to WebBridgeBot, your bridge between Telegram and the Web!\n\n"
-		text += "Access your player and more features here:\n" + webURL
+		text += "Find out more about WebBridgeBot on GitHub: https://github.com/mshafiee/webbridgebot\n\n"
+		text += "Access your player and more features here:\n" + webURL + "\n\n"
 	}
 
 	if strings.HasPrefix(message.Content.(*client.MessageText).Text.Text, "/url") {
