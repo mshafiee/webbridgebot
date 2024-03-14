@@ -44,10 +44,20 @@ RUN go mod download && \
 # Use a smaller image to run the app
 FROM debian:buster-slim
 
+# Set the working directory
+WORKDIR /app
+
 # Copy the binary and libraries from the builder image
-COPY --from=builder /webBridgeBot /webBridgeBot
+COPY --from=builder /webBridgeBot /app/webBridgeBot
 COPY --from=builder /usr/local/lib /usr/local/lib
 COPY --from=builder /usr/local/openssl/lib /usr/local/openssl/lib
+
+# Copy the run script
+COPY run.sh /app/run.sh
+
+# Set the permissions for the binary and the run script
+RUN chmod +x /app/webBridgeBot
+RUN chmod +x /app/run.sh
 
 # Update ld cache with the new shared libraries
 RUN ldconfig
@@ -56,4 +66,4 @@ RUN ldconfig
 EXPOSE 8080
 
 # Run the webBridgeBot binary
-CMD ["/webBridgeBot"]
+CMD ["/app/run.sh"]
