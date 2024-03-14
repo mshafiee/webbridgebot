@@ -237,6 +237,11 @@ func (b *TelegramBot) processMessage(chatID int64, message *client.Message) {
 		video := message.Content.(*client.MessageVideo).Video
 		log.Printf("Video: %d", video.Video.Id)
 		b.handleForwardedVideo(chatID, message)
+	case client.TypeMessagePhoto:
+		photo := message.Content.(*client.MessagePhoto).Photo
+		bestQualityPhoto := photo.Sizes[len(photo.Sizes)-1]
+		log.Printf("Photo: %d", bestQualityPhoto.Photo.Id)
+		b.handleForwardedPhoto(chatID, message)
 	case client.TypeMessageText:
 		text := message.Content.(*client.MessageText).Text.Text
 		log.Printf("Text: %s", text)
@@ -355,6 +360,30 @@ func (b *TelegramBot) handleForwardedVideo(chatID int64, message *client.Message
 		"width":    strconv.Itoa(int(video.Width)),
 		"height":   strconv.Itoa(int(video.Height)),
 		"fileName": video.FileName,
+	}
+	b.publishOverWS(chatID, wsMsg)
+}
+
+func (b *TelegramBot) handleForwardedPhoto(chatID int64, message *client.Message) {
+	photo := message.Content.(*client.MessagePhoto).Photo
+	bestQualityPhoto := photo.Sizes[len(photo.Sizes)-1]
+	fileID := bestQualityPhoto.Photo.Id
+	fileSize := bestQualityPhoto.Photo.Size
+	fileURL := b.getFileURL(chatID, fileID)
+
+	// Example MIME type determination (simplified)
+	mimeType := "image/jpeg" // Default MIME type; consider a more dynamic approach as needed
+
+	b.storeURLInHistory(chatID, fileID, fileURL, mimeType, fileSize, -1, bestQualityPhoto.Width, bestQualityPhoto.Height, "")
+	b.sendMessage(message.ChatId, fileURL)
+
+	// Construct the message with the URL and type
+	wsMsg := map[string]string{
+		"fileId":   strconv.Itoa(int(fileID)),
+		"url":      fileURL,
+		"mimeType": mimeType,
+		"width":    strconv.Itoa(int(bestQualityPhoto.Width)),
+		"height":   strconv.Itoa(int(bestQualityPhoto.Height)),
 	}
 	b.publishOverWS(chatID, wsMsg)
 }
@@ -495,6 +524,7 @@ func (b *TelegramBot) startWebServer() {
 }
 
 func (b *TelegramBot) handleFileDownload(w http.ResponseWriter, r *http.Request) {
+
 	vars := mux.Vars(r)
 	chatIDStr, fileIDStr := vars["chatID"], vars["fileID"]
 
@@ -665,6 +695,13 @@ func (b *TelegramBot) handlePlayer(w http.ResponseWriter, r *http.Request) {
 			border-radius: 8px;
 			box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 		}
+		#imageViewer {
+			max-width: 100%; 
+			max-height: 50vh; 
+			display: none; 
+			border-radius: 8px; 
+			box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+		}
 		.button-container {
 			display: flex;
 			justify-content: center;
@@ -699,101 +736,119 @@ func (b *TelegramBot) handlePlayer(w http.ResponseWriter, r *http.Request) {
     <p id="status">Chat ID: {{.ChatID}}; Waiting for media...</p>
     <video id="videoPlayer" controls></video>
     <audio id="audioPlayer" controls></audio>
+	<img id="imageViewer" controls style="" />
     <div class="button-container">
         <button id="reloadButton">Reload</button>
         <button id="fullscreenButton">Fullscreen</button>
     </div>
 
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            const videoPlayer = document.getElementById('videoPlayer');
-            const audioPlayer = document.getElementById('audioPlayer');
-            const fullscreenButton = document.getElementById('fullscreenButton');
-            const reloadButton = document.getElementById('reloadButton');
-            const statusText = document.getElementById('status');
-            let ws;
-            let latestMedia = { url: null, mimeType: null };
+		document.addEventListener('DOMContentLoaded', () => {
+			const videoPlayer = document.getElementById('videoPlayer');
+			const audioPlayer = document.getElementById('audioPlayer');
+    		const imageViewer = document.getElementById('imageViewer');
+			const fullscreenButton = document.getElementById('fullscreenButton');
+			const reloadButton = document.getElementById('reloadButton');
+			const statusText = document.getElementById('status');
+			let ws;
+			let latestMedia = { url: null, mimeType: null };
+		
+			const setupWebSocket = () => {
+				const wsAddress = 'ws://' + window.location.host + '/ws/{{.ChatID}}';
+				ws = new WebSocket(wsAddress);
+		
+				ws.addEventListener('message', (event) => handleWebSocketMessage(event));
+				ws.addEventListener('error', (error) => handleWebSocketError(error));
+				ws.addEventListener('open', () => handleWebSocketOpen());
+				ws.addEventListener('close', () => handleWebSocketClose());
+			};
+		
+			const handleWebSocketMessage = (event) => {
+				const data = JSON.parse(event.data);
+				console.log('Message from server: ', data);
+				latestMedia = { url: data.url, mimeType: data.mimeType };
+				playMedia(data.url, data.mimeType);
+			};
+		
+			const playMedia = (url, mimeType) => {
+				if (mimeType.startsWith('video')) {
+					updateUIForMedia(videoPlayer, [audioPlayer, imageViewer], mimeType);
+					loadAndPlayMedia(videoPlayer, url);
+				} else if (mimeType.startsWith('audio')) {
+					updateUIForMedia(audioPlayer, [videoPlayer, imageViewer], mimeType);
+					loadAndPlayMedia(audioPlayer, url);
+				} else if (mimeType.startsWith('image')) {
+					updateUIForMedia(imageViewer, [videoPlayer, audioPlayer], mimeType);
+					loadImage(imageViewer, url);
+				} else {
+					console.log('Unsupported media type: ', mimeType);
+				}
+			};
+		
+			const updateUIForMedia = (playerToShow, playersToHide, mimeType) => {
+				playersToHide.forEach(player => {
+					if (player.pause) player.pause();
+					player.style.display = 'none';
+				});
+				playerToShow.style.display = 'block';
+			
+				// Adjust status text based on media type
+				if (mimeType.startsWith('video')) {
+					statusText.textContent = 'Video playing...'; // Example status message for video
+					fullscreenButton.style.display = 'inline-block';
+					reloadButton.style.display = 'inline-block';
+					fullscreenButton.onclick = () => enterFullScreen(playerToShow);
+					reloadButton.onclick = () => playMedia(latestMedia.url, latestMedia.mimeType);
+				} else if (mimeType.startsWith('audio')) {
+					statusText.textContent = 'Audio playing...'; // Example status message for audio
+					fullscreenButton.style.display = 'none';
+					reloadButton.style.display = 'none';
+				} else if (mimeType.startsWith('image')) {
+					statusText.textContent = 'Click the photo for full screen';
+					fullscreenButton.style.display = 'none';
+					reloadButton.style.display = 'none';
+				} else {
+					statusText.textContent = ''; // Clear or set a default message for unsupported media types
+					fullscreenButton.style.display = 'none';
+					reloadButton.style.display = 'none';
+				}
+			};
 
-            const setupWebSocket = () => {
-                const wsAddress = 'ws://' + window.location.host + '/ws/{{.ChatID}}';
-                ws = new WebSocket(wsAddress);
-
-                ws.addEventListener('message', (event) => handleWebSocketMessage(event));
-                ws.addEventListener('error', (error) => handleWebSocketError(error));
-                ws.addEventListener('open', () => handleWebSocketOpen());
-                ws.addEventListener('close', () => handleWebSocketClose());
-            };
-
-            const handleWebSocketMessage = (event) => {
-                const data = JSON.parse(event.data);
-                console.log('Message from server: ', data);
-                latestMedia = { url: data.url, mimeType: data.mimeType };
-                playMedia(data.url, data.mimeType);
-            };
-
-            const handleWebSocketError = (error) => {
-                console.log('WebSocket Error: ', error);
-                statusText.textContent = 'WebSocket Error: ' + error;
-            };
-
-            const handleWebSocketOpen = () => {
-                console.log('WebSocket connection established');
-                statusText.textContent = 'WebSocket connection established';
-            };
-
-            const handleWebSocketClose = () => {
-                console.log('WebSocket connection closed. Attempting to reconnect...');
-                statusText.textContent = 'WebSocket connection closed. Reconnecting...';
-                setTimeout(setupWebSocket, 3000); // Retry connection after 3 seconds
-            };
-
-            const playMedia = (url, mimeType) => {
-                const [playerToShow, playerToHide] = mimeType.startsWith('video') ?
-                    [videoPlayer, audioPlayer] : [audioPlayer, videoPlayer];
-                updateUIForMedia(playerToShow, playerToHide, mimeType);
-                loadAndPlayMedia(playerToShow, url, mimeType);
-            };
-
-            const updateUIForMedia = (playerToShow, playerToHide, mimeType) => {
-                fullscreenButton.style.display = mimeType.startsWith('video') ? 'inline-block' : 'none';
-                reloadButton.style.display = mimeType.startsWith('video') ? 'inline-block' : 'none';
-
-                playerToHide.pause();
-                playerToHide.style.display = 'none';
-                playerToShow.style.display = 'block';
-
-                fullscreenButton.onclick = () => enterFullscreen(playerToShow);
-                reloadButton.onclick = () => playMedia(latestMedia.url, latestMedia.mimeType);
-            };
-
-            const loadAndPlayMedia = (player, url, mimeType) => {
-				// Append a unique query string to the URL
+			const loadAndPlayMedia = (player, url) => {
 				const uniqueUrl = url + '?nocache=' + new Date().getTime();
 				player.src = uniqueUrl;
-                player.load();
-                player.play().then(() => {
-                    statusText.textContent = ''; // Clear status text on success
-                }).catch((error) => {
-                    console.error('Error playing media: ', error);
-                    statusText.textContent = 'Error playing media. Retrying...';
-                    setTimeout(() => playMedia(url, mimeType), 3000);
-                });
-            };
+				player.load();
+				player.play().catch(error => {
+					console.error('Error playing media: ', error);
+					statusText.textContent = 'Error playing media. Retrying...';
+					setTimeout(() => playMedia(url, latestMedia.mimeType), 3000);
+				});
+			};
+		
+			const loadImage = (imageElement, url) => {
+				const uniqueUrl = url + '?nocache=' + new Date().getTime();
+				imageElement.src = uniqueUrl;
+			};
 
-            const enterFullscreen = (element) => {
-                if (element.requestFullscreen) {
-                    element.requestFullscreen();
-                } else if (element.webkitRequestFullscreen) {
-                    element.webkitRequestFullscreen();
-                } else if (element.mozRequestFullScreen) {
-                    element.mozRequestFullScreen();
-                } else if (element.msRequestFullscreen) {
-                    element.msRequestFullscreen();
-                }
-            };
+			const enterFullScreen = (element) => {
+				if (element.requestFullscreen) {
+					element.requestFullscreen();
+				} else if (element.webkitRequestFullscreen) { /* Safari */
+					element.webkitRequestFullscreen();
+				} else if (element.msRequestFullscreen) { /* IE11 */
+					element.msRequestFullscreen();
+				} else if (element.mozRequestFullScreen) { /* Firefox */
+					element.mozRequestFullScreen();
+				}
+			};
+		
+			imageViewer.addEventListener('click', () => {
+				enterFullScreen(imageViewer);
+			});
+		
+			setupWebSocket();
+		});
 
-            setupWebSocket();
-        });
     </script>
 </body>
 </html>

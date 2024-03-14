@@ -25,3 +25,6 @@ tdlib/
 tdlib_tdlib_install
 webBridgeBot
 
+.idea/modules.xml
+.idea/vcs.xml
+.idea/webbridgebot.iml
