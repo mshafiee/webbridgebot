@@ -9,13 +9,15 @@ OPENSSL_DIR=$(CURDIR)/openssl
 BUILD_DIR=$(TDLIB_DIR)/build
 TDLIB_INSTALL_DIR=$(CURDIR)/tdlib_install
 OPENSSL_INSTALL_DIR=$(CURDIR)/openssl_install
+DOCKER_IMAGE_NAME=webbridgebot
+DOCKER_TAG=latest
 
 # Environment variables for Go build
 export CGO_CFLAGS=-I$(TDLIB_INSTALL_DIR)/include -I$(OPENSSL_INSTALL_DIR)/include
 export CGO_LDFLAGS=-L$(TDLIB_INSTALL_DIR)/lib -L$(OPENSSL_INSTALL_DIR)/lib -lssl -lcrypto
 
-# Default target builds OpenSSL, TDLib, and the Go application
-all: openssl tdlib webBridgeBot
+# Default target builds OpenSSL, TDLib, the Go application, and the Docker image
+all: openssl tdlib webBridgeBot docker
 
 # Clone and build OpenSSL
 openssl:
@@ -31,21 +33,25 @@ $(TDLIB_DIR):
 # Build TDLib
 tdlib: openssl $(TDLIB_DIR)
 	mkdir -p $(BUILD_DIR) && cd $(BUILD_DIR) && \
-	cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$(INSTALL_DIR) -DOPENSSL_ROOT_DIR=$(OPENSSL_INSTALL_DIR) .. && \
+	cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$(TDLIB_INSTALL_DIR) -DOPENSSL_ROOT_DIR=$(OPENSSL_INSTALL_DIR) .. && \
 	cmake --build . --target install
 
 # Build the Go application webBridgeBot
 webBridgeBot: tdlib
 	go build -o webBridgeBot .
 
+# Build Docker image
+docker:
+	docker build -t $(DOCKER_IMAGE_NAME):$(DOCKER_TAG) .
+
 # Clean up build and cloned directories, and remove webBridgeBot binary
 clean:
 	rm -rf $(BUILD_DIR)
 	rm -rf $(TDLIB_DIR)
 	rm -rf $(OPENSSL_DIR)
-	rm -rf $(INSTALL_DIR)
+	rm -rf $(TDLIB_INSTALL_DIR)
 	rm -rf $(OPENSSL_INSTALL_DIR)
 	rm -f webBridgeBot
 
 # Phony targets
-.PHONY: all clean tdlib webBridgeBot openssl
+.PHONY: all clean tdlib webBridgeBot openssl docker
