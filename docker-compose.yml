@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  webbridgebot:
+    image: webbridgebot:latest
+    environment:
+      - API_ID=${API_ID}
+      - API_HASH=${API_HASH}
+      - BOT_TOKEN=${BOT_TOKEN}
+      - BASE_URL=${BASE_URL}
+      - PORT=${PORT}
+    ports:
+      - "${PORT}:${PORT}"
+    volumes:
+      - .tdlib:/app/.tdlib  # Persist TDLib data between container restarts
