@@ -20,11 +20,13 @@
 # Go workspace file
 go.work
 
+# Ignored directories
 .tdlib/
 tdlib/
 tdlib_tdlib_install
 webBridgeBot
 
+# IntelliJ IDEA specific files
 .idea/modules.xml
 .idea/vcs.xml
 .idea/webbridgebot.iml
