@@ -78,6 +78,45 @@ webbridgebot:latest
 
 Ensure to replace `your_api_id`, `your_api_hash`, and `your_bot_token` with your actual Telegram credentials. Adjust `http://example.com` to your WebBridgeBot instance's URL.
 
+### Running WebBridgeBot with Docker Compose
+
+For a simpler and more streamlined deployment, you can use Docker Compose to manage the WebBridgeBot service. This approach automatically sets up the environment variables and port mappings based on your `.env` file and `docker-compose.yml` configuration.
+
+#### 1. Create a .env File
+
+First, create a `.env` file in the root directory of the project with your Telegram credentials and other configurations as shown below:
+
+```plaintext
+# .env file content
+API_ID=123456
+API_HASH=abcdef1234567890abcdef1234567890
+BOT_TOKEN=123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11
+BASE_URL=http://localhost:8080
+PORT=8080
+```
+
+Make sure to replace the placeholders with your actual data.
+
+#### 2. Running with Docker Compose
+
+To start the WebBridgeBot service using Docker Compose, navigate to the project's root directory and run:
+
+```bash
+docker-compose up -d
+```
+
+This command builds (if necessary) and starts the container in the background. To view the logs of your service, you can use:
+
+```bash
+docker-compose logs -f
+```
+
+To stop and remove the containers, use:
+
+```bash
+docker-compose down
+```
+
 ## Contributing
 
 We welcome contributions to the WebBridgeBot project! Check out the issues tab for ways you can help make WebBridgeBot even better.
