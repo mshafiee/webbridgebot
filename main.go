@@ -207,6 +207,10 @@ func (b *TelegramBot) processUpdates(listener *client.Listener) {
 			break
 		case client.TypeUpdateMessageSendSucceeded:
 			break
+		case client.TypeError:
+			errorMessage := update.(*client.Error)
+			log.Printf("Error: %d, %s", errorMessage.Code, errorMessage.Message)
+			break
 		default:
 			log.Printf("Unhandled update: %#v", update)
 			PrintAllFields(update)
