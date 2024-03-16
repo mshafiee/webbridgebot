@@ -11,6 +11,7 @@ TDLIB_INSTALL_DIR=$(CURDIR)/tdlib_install
 OPENSSL_INSTALL_DIR=$(CURDIR)/openssl_install
 DOCKER_IMAGE_NAME=webbridgebot
 DOCKER_TAG=latest
+DOCKER_USERNAME=mshafiee
 
 # Environment variables for Go build
 export CGO_CFLAGS=-I$(TDLIB_INSTALL_DIR)/include -I$(OPENSSL_INSTALL_DIR)/include
@@ -43,6 +44,9 @@ webBridgeBot: tdlib
 # Build Docker image
 docker:
 	docker build -t $(DOCKER_IMAGE_NAME):$(DOCKER_TAG) .
+	docker tag $(DOCKER_IMAGE_NAME):$(DOCKER_TAG) $(DOCKER_USERNAME)/$(DOCKER_IMAGE_NAME):$(DOCKER_TAG)
+	docker login -u $(DOCKER_USERNAME)
+	docker push $(DOCKER_USERNAME)/$(DOCKER_IMAGE_NAME):$(DOCKER_TAG)
 
 # Clean up build and cloned directories, and remove webBridgeBot binary
 clean:

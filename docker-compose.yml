@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   webbridgebot:
-    image: webbridgebot:latest
+    image: mshafiee/webbridgebot
     environment:
       - API_ID=${API_ID}
       - API_HASH=${API_HASH}
