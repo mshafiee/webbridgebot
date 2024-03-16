@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -20,12 +21,13 @@ import (
 )
 
 type Config struct {
-	ApiID           int
-	ApiHash         string
-	BotToken        string
-	BaseURL         string
-	Port            string
-	TdlibParameters *client.SetTdlibParametersRequest
+	ApiID                int
+	ApiHash              string
+	BotToken             string
+	BaseURL              string
+	Port                 string
+	MaxFilesFolderSizeGB int64
+	TdlibParameters      *client.SetTdlibParametersRequest
 }
 
 type TelegramBot struct {
@@ -62,12 +64,13 @@ func main() {
 
 func loadConfig() Config {
 	var (
-		apiID          = flag.Int("apiID", 0, "Telegram API ID")
-		apiHash        = flag.String("apiHash", "", "Telegram API Hash")
-		botToken       = flag.String("botToken", "", "Telegram Bot Token")
-		baseURL        = flag.String("baseURL", "", "Base URL for the webhook")
-		port           = flag.String("port", "8080", "Port on which the bot runs")
-		useIPAsBaseURL = flag.Bool("local", false, "Use the machine's IP address as the base URL")
+		apiID           = flag.Int("apiID", 0, "Telegram API ID")
+		apiHash         = flag.String("apiHash", "", "Telegram API Hash")
+		botToken        = flag.String("botToken", "", "Telegram Bot Token")
+		baseURL         = flag.String("baseURL", "", "Base URL for the webhook")
+		port            = flag.String("port", "8080", "Port on which the bot runs")
+		useIPAsBaseURL  = flag.Bool("local", false, "Use the machine's IP address as the base URL")
+		maxFolderSizeGB = flag.Int64("maxFolderSizeGB", 10, "Maximum size of the download folder in gigabytes")
 	)
 	flag.Parse()
 
@@ -98,11 +101,12 @@ func loadConfig() Config {
 	}
 
 	return Config{
-		ApiID:    *apiID,
-		ApiHash:  *apiHash,
-		BotToken: *botToken,
-		BaseURL:  *baseURL,
-		Port:     *port,
+		ApiID:                *apiID,
+		ApiHash:              *apiHash,
+		BotToken:             *botToken,
+		BaseURL:              *baseURL,
+		Port:                 *port,
+		MaxFilesFolderSizeGB: *maxFolderSizeGB,
 		TdlibParameters: &client.SetTdlibParametersRequest{
 			UseTestDc:              false,
 			DatabaseDirectory:      filepath.Join(".tdlib", "database"),
@@ -209,7 +213,7 @@ func (b *TelegramBot) processUpdates(listener *client.Listener) {
 			break
 		case client.TypeError:
 			errorMessage := update.(*client.Error)
-			log.Printf("Error: %d, %s", errorMessage.Code, errorMessage.Message)
+			log.Printf("Telegram Error Message: %d, %s", errorMessage.Code, errorMessage.Message)
 			break
 		default:
 			log.Printf("Unhandled update: %#v", update)
@@ -526,104 +530,126 @@ func (b *TelegramBot) startWebServer() {
 		log.Panic(err)
 	}
 }
-
 func (b *TelegramBot) handleFileDownload(w http.ResponseWriter, r *http.Request) {
-
-	vars := mux.Vars(r)
-	chatIDStr, fileIDStr := vars["chatID"], vars["fileID"]
-
-	chatID, err := strconv.ParseInt(chatIDStr, 10, 64)
+	// Extract variables from request
+	chatID, fileID, err := b.extractRequestParameters(w, r)
 	if err != nil {
-		http.Error(w, "Invalid chat ID", http.StatusBadRequest)
+		// Error already handled within extractRequestParameters
 		return
 	}
 
-	fileID, err := strconv.ParseInt(fileIDStr, 10, 32)
+	// Download and open file
+	fp, err := b.downloadAndOpenFile(fileID)
 	if err != nil {
-		http.Error(w, "Invalid file ID", http.StatusBadRequest)
-		return
-	}
-
-	url := b.getFileURL(chatID, int32(fileID))
-	log.Printf("handleFileDownload; Received request: %s", url)
-
-	var fp *os.File
-
-	// Retry mechanism for opening file
-	maxRetries := 10
-	for i := 0; i < maxRetries; i++ {
-		log.Printf("Downloading file %d from chat %d", fileID, chatID)
-
-		file, err := b.tdlibClient.DownloadFile(&client.DownloadFileRequest{
-			FileId:   int32(fileID),
-			Priority: 1,
-		})
-		if err != nil {
-			log.Printf("Error downloading file: %v", err)
-			http.Error(w, "Error downloading file", http.StatusInternalServerError)
-			return
-		}
-
-		filePath := file.Local.Path
-
-		fp, err = os.Open(filePath)
-		if err == nil {
-			break // File opened successfully
-		}
-		log.Printf("Error opening file (attempt %d): %v", i+1, err)
-		if i < maxRetries { // Wait before retrying, unless it's the last attempt
-			time.Sleep(time.Duration(i) * time.Second)
-		}
-	}
-
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Error opening file after %d attempts", maxRetries), http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	defer fp.Close()
 
-	fileInfo, err := fp.Stat()
+	// Get file metadata
+	fileSize, mimeType, err := b.getFileMetadata(fp, chatID, fileID)
 	if err != nil {
-		log.Printf("Error getting file info: %v", err)
-		http.Error(w, "Error reading file info", http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	var fileSize int64
-	var mimeType string
-	fileMeta, err := b.getMetaByURL(chatID, url)
-	if err != nil {
-		log.Printf("Error determining MIME type: %v", err)
-		fileSize = fileInfo.Size()
-		mimeType = "application/octet-stream" // Default MIME type
+	// Handle range requests for partial content delivery
+	if rangeHeader := r.Header.Get("Range"); rangeHeader != "" {
+		b.servePartialContent(w, fp, rangeHeader, fileSize, mimeType)
 	} else {
-		fileSize = fileMeta.Size
-		mimeType = fileMeta.MIMEType
-	}
-
-	w.Header().Set("Accept-Ranges", "bytes")
-
-	rangeHeader := r.Header.Get("Range")
-	if rangeHeader != "" {
-		start, end, err := parseRange(rangeHeader, fileSize)
-		if err != nil {
-			http.Error(w, "Invalid Range Header", http.StatusBadRequest)
-			return
-		}
-
-		contentLength := end - start + 1
-		w.Header().Set("Content-Length", fmt.Sprintf("%d", contentLength))
-		w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, fileSize))
-		w.Header().Set("Content-Type", mimeType)
-		w.WriteHeader(http.StatusPartialContent)
-
-		fp.Seek(start, 0)
-		io.CopyN(w, fp, contentLength)
-	} else {
-		w.Header().Set("Content-Length", fmt.Sprintf("%d", fileSize))
+		// Serve the entire file
+		w.Header().Set("Content-Length", strconv.FormatInt(fileSize, 10))
 		w.Header().Set("Content-Type", mimeType)
 		io.Copy(w, fp) // Stream the whole file
 	}
+}
+
+func (b *TelegramBot) extractRequestParameters(w http.ResponseWriter, r *http.Request) (chatID int64, fileID int32, err error) {
+	vars := mux.Vars(r)
+	chatIDStr, fileIDStr := vars["chatID"], vars["fileID"]
+
+	chatID, err = strconv.ParseInt(chatIDStr, 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid chat ID", http.StatusBadRequest)
+		return 0, 0, err
+	}
+
+	fileIDInt64, err := strconv.ParseInt(fileIDStr, 10, 32)
+	if err != nil {
+		http.Error(w, "Invalid file ID", http.StatusBadRequest)
+		return 0, 0, err
+	}
+
+	return chatID, int32(fileIDInt64), nil
+}
+
+func (b *TelegramBot) downloadAndOpenFile(fileID int32) (*os.File, error) {
+	// Attempt to clean up the download folder before downloading a new file
+	if b.isCleanupNeeded() {
+		go func() {
+			err := b.cleanUpDownloadFolderIfNeeded()
+			if err != nil {
+				log.Printf("Error cleaning up download folder: %v", err)
+			}
+		}()
+	}
+
+	maxRetries := 10
+	for i := 0; i < maxRetries; i++ {
+		file, err := b.tdlibClient.DownloadFile(&client.DownloadFileRequest{
+			FileId:   fileID,
+			Priority: 1,
+		})
+		if err != nil {
+			if i == maxRetries-1 {
+				return nil, fmt.Errorf("Error downloading file after %d attempts: %v", maxRetries, err)
+			}
+			time.Sleep(time.Duration(i+1) * time.Second)
+			continue
+		}
+
+		fp, err := os.Open(file.Local.Path)
+		if err == nil {
+			return fp, nil
+		}
+		if i == maxRetries-1 {
+			return nil, fmt.Errorf("Error opening file after %d attempts: %v", maxRetries, err)
+		}
+		time.Sleep(time.Duration(i+1) * time.Second)
+	}
+	return nil, fmt.Errorf("Unhandled error in downloadAndOpenFile")
+}
+
+func (b *TelegramBot) getFileMetadata(fp *os.File, chatID int64, fileID int32) (int64, string, error) {
+	fileInfo, err := fp.Stat()
+	if err != nil {
+		return 0, "", fmt.Errorf("Error getting file info: %v", err)
+	}
+
+	fileMeta, err := b.getMetaByURL(chatID, b.getFileURL(chatID, fileID))
+	if err != nil {
+		// Default MIME type if metadata is not found
+		return fileInfo.Size(), "application/octet-stream", nil
+	}
+
+	return fileMeta.Size, fileMeta.MIMEType, nil
+}
+
+func (b *TelegramBot) servePartialContent(w http.ResponseWriter, fp *os.File, rangeHeader string, fileSize int64, mimeType string) {
+	start, end, err := parseRange(rangeHeader, fileSize)
+	if err != nil {
+		http.Error(w, "Invalid Range Header", http.StatusBadRequest)
+		return
+	}
+
+	contentLength := end - start + 1
+	w.Header().Set("Content-Length", strconv.FormatInt(contentLength, 10))
+	w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, fileSize))
+	w.Header().Set("Content-Type", mimeType)
+	w.WriteHeader(http.StatusPartialContent)
+
+	fp.Seek(start, 0)
+	io.CopyN(w, fp, contentLength)
 }
 
 // parseRange parses a Range header string and returns the start and end byte positions
@@ -648,6 +674,80 @@ func parseRange(rangeStr string, fileSize int64) (start, end int64, err error) {
 		err = fmt.Errorf("invalid range")
 	}
 	return
+}
+
+func (b *TelegramBot) isCleanupNeeded() bool {
+	var totalSize int64
+	err := filepath.Walk(b.config.TdlibParameters.FilesDirectory, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() {
+			totalSize += info.Size()
+		}
+		return nil
+	})
+	if err != nil {
+		log.Printf("Error walking through download folder: %v", err)
+		return false
+	}
+
+	// Convert maxFolderSize from GB to bytes for comparison
+	maxFolderSize := b.config.MaxFilesFolderSizeGB * 1024 * 1024 * 1024
+	return totalSize > maxFolderSize
+}
+
+func (b *TelegramBot) cleanUpDownloadFolderIfNeeded() error {
+	var totalSize int64
+	fileList := make([]struct {
+		path    string
+		modTime time.Time
+		size    int64
+	}, 0)
+
+	// Convert maxFolderSize from GB to bytes for comparison
+	maxFolderSize := b.config.MaxFilesFolderSizeGB * 1024 * 1024 * 1024
+
+	// Walk through the download folder to calculate total size and collect file info
+	err := filepath.Walk(b.config.TdlibParameters.FilesDirectory, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() {
+			totalSize += info.Size()
+			fileList = append(fileList, struct {
+				path    string
+				modTime time.Time
+				size    int64
+			}{
+				path, info.ModTime(), info.Size(),
+			})
+		}
+		return nil
+	})
+
+	if err != nil {
+		return err
+	}
+
+	// Sort the files by modification time, oldest first
+	sort.Slice(fileList, func(i, j int) bool {
+		return fileList[i].modTime.Before(fileList[j].modTime)
+	})
+
+	// Remove files until the total size is within the limit
+	for totalSize > maxFolderSize && len(fileList) > 0 {
+		oldestFile := fileList[0]
+		fileList = fileList[1:]
+		err := os.Remove(oldestFile.path)
+		if err != nil {
+			return err
+		}
+		totalSize -= oldestFile.size
+		log.Printf("Removed file %s (oldest first) to reduce download folder size", oldestFile.path)
+	}
+
+	return nil
 }
 
 func (b *TelegramBot) handlePlayer(w http.ResponseWriter, r *http.Request) {
