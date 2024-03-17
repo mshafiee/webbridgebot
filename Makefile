@@ -43,10 +43,12 @@ webBridgeBot: tdlib
 
 # Build Docker image
 docker:
-	docker build -t $(DOCKER_IMAGE_NAME):$(DOCKER_TAG) .
-	docker tag $(DOCKER_IMAGE_NAME):$(DOCKER_TAG) $(DOCKER_USERNAME)/$(DOCKER_IMAGE_NAME):$(DOCKER_TAG)
-	docker login -u $(DOCKER_USERNAME)
-	docker push $(DOCKER_USERNAME)/$(DOCKER_IMAGE_NAME):$(DOCKER_TAG)
+	docker buildx create --use
+	docker buildx build --platform linux/amd64,linux/arm64 \
+		-t $(DOCKER_USERNAME)/$(DOCKER_IMAGE_NAME):$(DOCKER_TAG) \
+		--push . \
+		--cache-from=type=registry,ref=$(DOCKER_USERNAME)/$(DOCKER_IMAGE_NAME):cache \
+		--cache-to=type=registry,ref=$(DOCKER_USERNAME)/$(DOCKER_IMAGE_NAME):cache,mode=max
 
 # Clean up build and cloned directories, and remove webBridgeBot binary
 clean:
