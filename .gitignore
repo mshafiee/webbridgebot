@@ -30,3 +30,6 @@ webBridgeBot
 .idea/modules.xml
 .idea/vcs.xml
 .idea/webbridgebot.iml
+
+# docker .env file
+.env
