@@ -856,6 +856,7 @@ func (b *TelegramBot) handlePlayer(w http.ResponseWriter, r *http.Request) {
 			const statusText = document.getElementById('status');
 			let ws;
 			let latestMedia = { url: null, mimeType: null };
+			let attemptReconnect = true;
 		
 			const setupWebSocket = () => {
 				const wsAddress = 'ws://' + window.location.host + '/ws/{{.ChatID}}';
@@ -873,6 +874,16 @@ func (b *TelegramBot) handlePlayer(w http.ResponseWriter, r *http.Request) {
 				latestMedia = { url: data.url, mimeType: data.mimeType };
 				playMedia(data.url, data.mimeType);
 			};
+
+            const handleWebSocketClose = () => {
+                console.log('WebSocket closed. Attempting to reconnect...');
+                if (attemptReconnect) setTimeout(setupWebSocket, 3000);
+            };
+
+            const handleWebSocketError = (error) => {
+                console.error('WebSocket encountered an error: ', error.message);
+                ws.close(); // Ensure the WebSocket is closed properly before attempting to reconnect
+            };
 		
 			const playMedia = (url, mimeType) => {
 				if (mimeType.startsWith('video')) {
