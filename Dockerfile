@@ -4,30 +4,8 @@ FROM golang:1.21 as builder
 # Set the working directory
 WORKDIR /app
 
-# Install dependencies required for building TDLib
-RUN apt-get update && apt-get install -y \
-    git \
-    cmake \
-    g++ \
-    make \
-    zlib1g-dev \
-    libssl-dev \
-    gperf \
-    && rm -rf /var/lib/apt/lists/*
-
-# Clone and build TDLib
-RUN git clone --depth 1 https://github.com/tdlib/td.git /tdlib && \
-    mkdir /tdlib/build && \
-    cd /tdlib/build && \
-    cmake -DCMAKE_BUILD_TYPE=Release -DOPENSSL_ROOT_DIR=/usr .. && \
-    cmake --build . --target install
-
 # Copy the local package files to the container's workspace
 ADD . /app
-
-# Set environment variables for CGO to find TDLib and system OpenSSL
-ENV CGO_CFLAGS="-I/usr/local/include -I/usr/include"
-ENV CGO_LDFLAGS="-L/usr/local/lib -L/usr/lib -lssl -lcrypto -ltdjson_static -ltdcore -ltdactor -ltdapi -ltdutils"
 
 # Build the Go app
 RUN go mod download && \

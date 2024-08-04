@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebBridgeBot Media Player - {{.ChatID}}</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 10px; /* Reduced padding */
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2px; /* Reduced gap */
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f8f9fa;
+        }
+        h1 {
+            color: ##a5adb6;
+            font-size: 1.5rem; /* Reduced font size */
+            font-weight: 600;
+            margin: 0; /* Remove margin */
+        }
+        #videoPlayer, #audioPlayer {
+            max-width: 100%;
+            max-height: 50vh; /* Adjusted for compact design */
+            display: none; /* Initially hidden */
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        #imageViewer {
+            max-width: 100%;
+            max-height: 50vh;
+            display: none;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .button-container {
+            display: flex;
+            justify-content: center;
+            width: 100%;
+            margin: 5px 0; /* Reduced margin */
+        }
+        #fullscreenButton, #reloadButton {
+            display: none; /* Initially hidden */
+            margin: 0 5px;
+            padding: 5px 15px;
+            font-size: 0.9rem; /* Adjusted font size for compactness */
+            font-weight: 500;
+            color: #fff;
+            background-color: #007bff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        #fullscreenButton:hover, #reloadButton:hover {
+            background-color: #0056b3;
+        }
+        #status {
+            font-size: 1rem; /* Adjusted font size */
+            color: #6c757d;
+            margin: 5px 0; /* Adjusted margin */
+        }
+    </style>
+</head>
+<body>
+<h1>WebBridgeBot</h1>
+<p id="status">Chat ID: {{.ChatID}}; Waiting for media...</p>
+<video id="videoPlayer" controls></video>
+<audio id="audioPlayer" controls></audio>
+<img id="imageViewer" controls style="" />
+<div class="button-container">
+    <button id="reloadButton">Reload</button>
+    <button id="fullscreenButton">Fullscreen</button>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const videoPlayer = document.getElementById('videoPlayer');
+        const audioPlayer = document.getElementById('audioPlayer');
+        const imageViewer = document.getElementById('imageViewer');
+        const fullscreenButton = document.getElementById('fullscreenButton');
+        const reloadButton = document.getElementById('reloadButton');
+        const statusText = document.getElementById('status');
+        let ws;
+        let latestMedia = { url: null, mimeType: null };
+        let attemptReconnect = true;
+
+        const setupWebSocket = () => {
+            const wsAddress = 'ws://' + window.location.host + '/ws/{{.ChatID}}';
+            ws = new WebSocket(wsAddress);
+
+            ws.addEventListener('message', (event) => handleWebSocketMessage(event));
+            ws.addEventListener('error', (error) => handleWebSocketError(error));
+            ws.addEventListener('open', () => handleWebSocketOpen());
+            ws.addEventListener('close', () => handleWebSocketClose());
+        };
+
+        const handleWebSocketOpen = () => {
+            console.log('WebSocket connection opened.');
+        };
+
+        const handleWebSocketMessage = (event) => {
+            const data = JSON.parse(event.data);
+            console.log('Message from server: ', data);
+            latestMedia = { url: data.url, mimeType: data.mimeType };
+            playMedia(data.url, data.mimeType);
+        };
+
+        const handleWebSocketClose = () => {
+            console.log('WebSocket closed. Attempting to reconnect...');
+            if (attemptReconnect) setTimeout(setupWebSocket, 3000);
+        };
+
+        const handleWebSocketError = (error) => {
+            console.error('WebSocket encountered an error: ', error.message);
+            ws.close(); // Ensure the WebSocket is closed properly before attempting to reconnect
+        };
+
+        const playMedia = (url, mimeType) => {
+            if (mimeType.startsWith('video')) {
+                updateUIForMedia(videoPlayer, [audioPlayer, imageViewer], mimeType);
+                loadAndPlayMedia(videoPlayer, url);
+            } else if (mimeType.startsWith('audio')) {
+                updateUIForMedia(audioPlayer, [videoPlayer, imageViewer], mimeType);
+                loadAndPlayMedia(audioPlayer, url);
+            } else if (mimeType.startsWith('image')) {
+                updateUIForMedia(imageViewer, [videoPlayer, audioPlayer], mimeType);
+                loadImage(imageViewer, url);
+            } else {
+                console.log('Unsupported media type: ', mimeType);
+            }
+        };
+
+        const updateUIForMedia = (playerToShow, playersToHide, mimeType) => {
+            playersToHide.forEach(player => {
+                if (player.pause) player.pause();
+                player.style.display = 'none';
+            });
+            playerToShow.style.display = 'block';
+
+            // Adjust status text based on media type
+            if (mimeType.startsWith('video')) {
+                statusText.textContent = 'Video playing...'; // Example status message for video
+                fullscreenButton.style.display = 'inline-block';
+                reloadButton.style.display = 'inline-block';
+                fullscreenButton.onclick = () => enterFullScreen(playerToShow);
+                reloadButton.onclick = () => playMedia(latestMedia.url, latestMedia.mimeType);
+            } else if (mimeType.startsWith('audio')) {
+                statusText.textContent = 'Audio playing...'; // Example status message for audio
+                fullscreenButton.style.display = 'none';
+                reloadButton.style.display = 'none';
+            } else if (mimeType.startsWith('image')) {
+                statusText.textContent = 'Click the photo for full screen';
+                fullscreenButton.style.display = 'none';
+                reloadButton.style.display = 'none';
+            } else {
+                statusText.textContent = ''; // Clear or set a default message for unsupported media types
+                fullscreenButton.style.display = 'none';
+                reloadButton.style.display = 'none';
+            }
+        };
+
+        const loadAndPlayMedia = (player, url) => {
+            const uniqueUrl = url + '?nocache=' + new Date().getTime();
+            player.src = uniqueUrl;
+            player.load();
+            player.play().catch(error => {
+                console.error('Error playing media: ', error);
+                //statusText.textContent = 'Error playing media. Retrying...';
+                //setTimeout(() => playMedia(url, latestMedia.mimeType), 3000);
+            });
+        };
+
+        const loadImage = (imageElement, url) => {
+            const uniqueUrl = url + '?nocache=' + new Date().getTime();
+            imageElement.src = uniqueUrl;
+        };
+
+        const enterFullScreen = (element) => {
+            if (element.requestFullscreen) {
+                element.requestFullscreen();
+            } else if (element.webkitRequestFullscreen) { /* Safari */
+                element.webkitRequestFullscreen();
+            } else if (element.msRequestFullscreen) { /* IE11 */
+                element.msRequestFullscreen();
+            } else if (element.mozRequestFullScreen) { /* Firefox */
+                element.mozRequestFullScreen();
+            }
+        };
+
+        imageViewer.addEventListener('click', () => {
+            enterFullScreen(imageViewer);
+        });
+
+        setupWebSocket();
+    });
+
+</script>
+</body>
+</html>
