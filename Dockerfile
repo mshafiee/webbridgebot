@@ -1,5 +1,5 @@
 # Use the official Go image as a parent image
-FROM golang:1.21 as builder
+FROM golang:1.21 AS builder
 
 # Set the working directory
 WORKDIR /app
@@ -12,7 +12,7 @@ RUN go mod download && \
     go build -o /app/webBridgeBot .
 
 # Use a smaller image to run the app
-FROM debian:bookworm-slim
+FROM debian:bookworm-slim AS final
 
 # Set the working directory
 WORKDIR /app
@@ -26,11 +26,6 @@ COPY run.sh /app/run.sh
 # Set the permissions for the binary and the run script
 RUN chmod +x /app/webBridgeBot
 RUN chmod +x /app/run.sh
-
-# Update and install the necessary libraries
-RUN apt-get update && apt-get install -y \
-    libssl3 \
-    && rm -rf /var/lib/apt/lists/*
 
 # Expose the application's port
 EXPOSE 8080

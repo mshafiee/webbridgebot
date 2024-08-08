@@ -9,7 +9,10 @@ services:
       - BOT_TOKEN=${BOT_TOKEN}
       - BASE_URL=${BASE_URL}
       - PORT=${PORT}
+      - HASH_LENGTH=${HASH_LENGTH}
+      - MAX_CACHE_SIZE=${MAX_CACHE_SIZE}
+      - PORT=${PORT}
     ports:
       - "${PORT}:${PORT}"
     volumes:
-      - .tdlib:/app/.tdlib  # Persist TDLib data between container restarts
+      - .cache:/app/.cache  # Persist .cache data between container restarts
