@@ -8,7 +8,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"webBridgeBot/internal/data"
@@ -57,21 +56,20 @@ var (
 )
 
 // NewTelegramBot creates a new instance of TelegramBot.
-func NewTelegramBot(config *config.Configuration) (*TelegramBot, error) {
+func NewTelegramBot(config *config.Configuration, logger *log.Logger) (*TelegramBot, error) {
 	dsn := fmt.Sprintf("file:%s?mode=rwc", config.DatabasePath)
 	tgClient, err := gotgproto.NewClient(
 		config.ApiID,
 		config.ApiHash,
 		gotgproto.ClientTypeBot(config.BotToken),
 		&gotgproto.ClientOpts{
-			InMemory: true,
-			Session:  sessionMaker.SqlSession(sqlite.Open(dsn)),
+			InMemory:         true,
+			Session:          sessionMaker.SqlSession(sqlite.Open(dsn)),
+			DisableCopyright: true,
 		})
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize Telegram client: %w", err)
 	}
-
-	logger := log.New(os.Stdout, "TelegramBot: ", log.Ldate|log.Ltime|log.Lshortfile)
 
 	// Initialize the database connection
 	db, err := sql.Open("sqlite", dsn)
@@ -114,10 +112,14 @@ func (b *TelegramBot) registerHandlers() {
 	clientDispatcher := b.tgClient.Dispatcher
 	clientDispatcher.AddHandler(handlers.NewCommand("start", b.handleStartCommand))
 	clientDispatcher.AddHandler(handlers.NewCommand("authorize", b.handleAuthorizeUser))
+	clientDispatcher.AddHandler(handlers.NewCommand("deauthorize", b.handleDeauthorizeUser)) // Add this line
 	clientDispatcher.AddHandler(handlers.NewCallbackQuery(filters.CallbackQuery.Prefix("cb_"), b.handleCallbackQuery))
 	clientDispatcher.AddHandler(handlers.NewAnyUpdate(b.handleAnyUpdate))
-	clientDispatcher.AddHandler(handlers.NewMessage(filters.Message.Video, b.handleVideoMessages))
+	clientDispatcher.AddHandler(handlers.NewMessage(filters.Message.Audio, b.handleMediaMessages))
+	clientDispatcher.AddHandler(handlers.NewMessage(filters.Message.Video, b.handleMediaMessages))
+	clientDispatcher.AddHandler(handlers.NewMessage(filters.Message.Photo, b.handleMediaMessages))
 }
+
 func (b *TelegramBot) handleStartCommand(ctx *ext.Context, u *ext.Update) error {
 	chatID := u.EffectiveChat().GetID()
 	user := u.EffectiveUser()
@@ -246,13 +248,46 @@ func (b *TelegramBot) handleAuthorizeUser(ctx *ext.Context, u *ext.Update) error
 	return b.sendReply(ctx, u, fmt.Sprintf("User %d has been authorized%s.", targetUserID, adminMsg))
 }
 
+func (b *TelegramBot) handleDeauthorizeUser(ctx *ext.Context, u *ext.Update) error {
+	// Only allow admins to run this command
+	adminID := u.EffectiveUser().ID
+	userInfo, err := b.userRepository.GetUserInfo(adminID)
+	if err != nil {
+		b.logger.Printf("Failed to retrieve user info for admin check: %v", err)
+		return b.sendReply(ctx, u, "Failed to deauthorize the user.")
+	}
+
+	if !userInfo.IsAdmin {
+		return b.sendReply(ctx, u, "You are not authorized to perform this action.")
+	}
+
+	// Parse the user ID from the command
+	args := strings.Fields(u.EffectiveMessage.Text)
+	if len(args) < 2 {
+		return b.sendReply(ctx, u, "Usage: /deauthorize <user_id>")
+	}
+	targetUserID, err := strconv.ParseInt(args[1], 10, 64)
+	if err != nil {
+		return b.sendReply(ctx, u, "Invalid user ID.")
+	}
+
+	// Deauthorize the user
+	err = b.userRepository.DeauthorizeUser(targetUserID)
+	if err != nil {
+		b.logger.Printf("Failed to deauthorize user %d: %v", targetUserID, err)
+		return b.sendReply(ctx, u, "Failed to deauthorize the user.")
+	}
+
+	return b.sendReply(ctx, u, fmt.Sprintf("User %d has been deauthorized.", targetUserID))
+}
+
 func (b *TelegramBot) handleAnyUpdate(ctx *ext.Context, u *ext.Update) error {
 	return nil
 }
 
-func (b *TelegramBot) handleVideoMessages(ctx *ext.Context, u *ext.Update) error {
+func (b *TelegramBot) handleMediaMessages(ctx *ext.Context, u *ext.Update) error {
 	chatID := u.EffectiveChat().GetID()
-	b.logger.Printf("Processing video message for chat ID: %d", chatID)
+	b.logger.Printf("Processing media message for chat ID: %d", chatID)
 
 	if !b.isUserChat(ctx, chatID) {
 		return dispatcher.EndGroups
@@ -418,6 +453,9 @@ func isSupportedMedia(m *gtypes.Message) (bool, error) {
 	switch m.Media.(type) {
 	case *tg.MessageMediaDocument:
 		return true, nil
+	case *tg.MessageMediaPhoto:
+		// TODO: add photo support
+		return false, nil
 	default:
 		return false, nil
 	}
@@ -543,7 +581,7 @@ func (b *TelegramBot) handleStream(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create a TelegramReader to stream the content.
-	lr, err := reader.NewTelegramReader(ctx, b.tgClient, file.Location, start, end, contentLength, b.config.BinaryCache)
+	lr, err := reader.NewTelegramReader(ctx, b.tgClient, file.Location, start, end, contentLength, b.config.BinaryCache, b.logger)
 	if err != nil {
 		b.logger.Printf("Error creating Telegram reader for message ID %d: %v", messageID, err)
 		http.Error(w, "Failed to initialize file stream", http.StatusInternalServerError)

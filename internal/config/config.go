@@ -3,15 +3,12 @@ package config
 import (
 	"fmt"
 	"log"
-	"time"
+	"webBridgeBot/internal/reader"
 
 	"github.com/spf13/viper"
-	"webBridgeBot/internal/reader"
 )
 
-const (
-	DefaultChunkSize int64 = 1024 * 1024 // 1 MB
-)
+const DefaultChunkSize int64 = 1024 * 1024 // 1 MB
 
 type Configuration struct {
 	ApiID          int
@@ -20,91 +17,88 @@ type Configuration struct {
 	BaseURL        string
 	Port           string
 	HashLength     int
-	BinaryCache    *reader.BinaryCache
 	CacheDirectory string
 	MaxCacheSize   int64
 	DatabasePath   string
-	Timeout        time.Duration
 	DebugMode      bool
+	BinaryCache    *reader.BinaryCache
 }
 
-// initializeViper sets up viper with environment variable overrides
-func initializeViper() {
+func LoadConfig(logger *log.Logger) Configuration {
+	initializeViper(logger)
+
+	var cfg Configuration
+	bindViperToConfig(&cfg)
+	validateMandatoryFields(cfg, logger)
+	setDefaultValues(&cfg)
+	initializeBinaryCache(&cfg, logger)
+
+	if cfg.DebugMode {
+		logger.Printf("Loaded configuration: %+v", cfg)
+	}
+
+	return cfg
+}
+
+func initializeViper(logger *log.Logger) {
 	viper.SetConfigFile(".env")
 	viper.AutomaticEnv()
 
 	if err := viper.ReadInConfig(); err != nil {
-		log.Printf("Error reading config file: %v", err)
+		logger.Printf("Error reading config file: %v", err)
 	}
 }
 
-// validateMandatoryFields checks for mandatory fields and terminates if any are missing
-func validateMandatoryFields(config Configuration) {
-	if config.ApiID == 0 {
-		log.Fatal("API_ID is required and not set")
+func bindViperToConfig(cfg *Configuration) {
+	cfg.ApiID = viper.GetInt("API_ID")
+	cfg.ApiHash = viper.GetString("API_HASH")
+	cfg.BotToken = viper.GetString("BOT_TOKEN")
+	cfg.BaseURL = viper.GetString("BASE_URL")
+	cfg.Port = viper.GetString("PORT")
+	cfg.HashLength = viper.GetInt("HASH_LENGTH")
+	cfg.CacheDirectory = viper.GetString("CACHE_DIRECTORY")
+	cfg.MaxCacheSize = viper.GetInt64("MAX_CACHE_SIZE")
+	cfg.DebugMode = viper.GetBool("DEBUG_MODE")
+}
+
+func validateMandatoryFields(cfg Configuration, logger *log.Logger) {
+	if cfg.ApiID == 0 {
+		logger.Fatal("API_ID is required and not set")
 	}
-	if config.ApiHash == "" {
-		log.Fatal("API_HASH is required and not set")
+	if cfg.ApiHash == "" {
+		logger.Fatal("API_HASH is required and not set")
 	}
-	if config.BotToken == "" {
-		log.Fatal("BOT_TOKEN is required and not set")
+	if cfg.BotToken == "" {
+		logger.Fatal("BOT_TOKEN is required and not set")
 	}
-	if config.BaseURL == "" {
-		log.Fatal("BASE_URL is required and not set")
+	if cfg.BaseURL == "" {
+		logger.Fatal("BASE_URL is required and not set")
 	}
 }
 
-// setDefaultValues sets default values for optional configuration fields
-func setDefaultValues(config *Configuration) {
-	if config.HashLength < 6 {
-		config.HashLength = 8
+func setDefaultValues(cfg *Configuration) {
+	if cfg.HashLength < 6 {
+		cfg.HashLength = 8
 	}
-	if config.CacheDirectory == "" {
-		config.CacheDirectory = ".cache"
+	if cfg.CacheDirectory == "" {
+		cfg.CacheDirectory = ".cache"
 	}
-	if config.MaxCacheSize == 0 {
-		config.MaxCacheSize = 10 * 1024 * 1024 * 1024 // 10 GB default
+	if cfg.MaxCacheSize == 0 {
+		cfg.MaxCacheSize = 10 * 1024 * 1024 * 1024 // 10 GB default
 	}
-	if config.DatabasePath == "" {
-		config.DatabasePath = fmt.Sprintf("%s/webBridgeBot.db", config.CacheDirectory)
-	}
-	if config.Timeout == 0 {
-		config.Timeout = 30 * time.Second
+	if cfg.DatabasePath == "" {
+		cfg.DatabasePath = fmt.Sprintf("%s/webBridgeBot.db", cfg.CacheDirectory)
 	}
 }
 
-func LoadConfig() Configuration {
-	initializeViper()
-
-	config := Configuration{
-		ApiID:          viper.GetInt("API_ID"),
-		ApiHash:        viper.GetString("API_HASH"),
-		BotToken:       viper.GetString("BOT_TOKEN"),
-		BaseURL:        viper.GetString("BASE_URL"),
-		Port:           viper.GetString("PORT"),
-		HashLength:     viper.GetInt("HASH_LENGTH"),
-		CacheDirectory: viper.GetString("CACHE_DIRECTORY"),
-		MaxCacheSize:   viper.GetInt64("MAX_CACHE_SIZE"),
-		Timeout:        viper.GetDuration("TIMEOUT"),
-		DebugMode:      viper.GetBool("DEBUG_MODE"),
-	}
-
-	validateMandatoryFields(config)
-	setDefaultValues(&config)
-
+func initializeBinaryCache(cfg *Configuration, logger *log.Logger) {
 	var err error
-	config.BinaryCache, err = reader.NewBinaryCache(
-		config.CacheDirectory,
-		config.MaxCacheSize,
+	cfg.BinaryCache, err = reader.NewBinaryCache(
+		cfg.CacheDirectory,
+		cfg.MaxCacheSize,
 		DefaultChunkSize,
 	)
 	if err != nil {
-		log.Fatalf("Error initializing BinaryCache: %v", err)
+		logger.Fatalf("Error initializing BinaryCache: %v", err)
 	}
-
-	if config.DebugMode {
-		log.Printf("Loaded configuration: %+v", config)
-	}
-
-	return config
 }

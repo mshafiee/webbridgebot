@@ -96,6 +96,15 @@ func (r *UserRepository) AuthorizeUser(userID int64, isAdmin bool) error {
 	return err
 }
 
+func (r *UserRepository) DeauthorizeUser(userID int64) error {
+	query := `UPDATE users SET is_authorized = 0, is_admin = 0 WHERE user_id = ?`
+	_, err := r.db.Exec(query, userID)
+	if err != nil {
+		return fmt.Errorf("failed to deauthorize user %d: %w", userID, err)
+	}
+	return nil
+}
+
 // GetAllAdmins retrieves a list of all admin users.
 func (r *UserRepository) GetAllAdmins() ([]User, error) {
 	query := `SELECT user_id, chat_id, first_name, last_name, username FROM users WHERE is_admin = TRUE`

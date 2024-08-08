@@ -1,7 +1,6 @@
 # Makefile for cloning, building TDLib, building OpenSSL, and building a Go application (webBridgeBot) that uses TDLib
 
 # Define variables
-TDLIB_DIR=$(CURDIR)/tdlib
 DOCKER_IMAGE_NAME=webbridgebot
 DOCKER_TAG=latest
 DOCKER_USERNAME=mshafiee

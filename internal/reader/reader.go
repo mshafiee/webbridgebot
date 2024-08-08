@@ -7,7 +7,6 @@ import (
 	"io"
 	"log"
 	"net"
-	"os"
 	"regexp"
 	"strconv"
 	"sync"
@@ -48,11 +47,7 @@ type telegramReader struct {
 }
 
 // NewTelegramReader initializes a new telegramReader with the given parameters, including a BinaryCache.
-func NewTelegramReader(ctx context.Context, client *gotgproto.Client,
-	location *tg.InputDocumentFileLocation,
-	start int64, end int64, contentLength int64, cache *BinaryCache) (io.ReadCloser, error) {
-	logger := log.New(os.Stdout, "tgReader-", 0)
-
+func NewTelegramReader(ctx context.Context, client *gotgproto.Client, location *tg.InputDocumentFileLocation, start int64, end int64, contentLength int64, cache *BinaryCache, logger *log.Logger) (io.ReadCloser, error) {
 	r := &telegramReader{
 		ctx:           ctx,
 		log:           logger,

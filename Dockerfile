@@ -23,6 +23,9 @@ COPY --from=builder /app/webBridgeBot /app/webBridgeBot
 # Copy the run script
 COPY run.sh /app/run.sh
 
+# Copy the run templates
+COPY templates /app/templates
+
 # Set the permissions for the binary and the run script
 RUN chmod +x /app/webBridgeBot
 RUN chmod +x /app/run.sh

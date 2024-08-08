@@ -13,12 +13,12 @@ DEBUG_MODE=${DEBUG_MODE:-false}
 
 # Execute the Go application with command-line flags
 ./webBridgeBot \
-  -apiID="$API_ID" \
-  -apiHash="$API_HASH" \
-  -botToken="$BOT_TOKEN" \
-  -baseURL="$BASE_URL" \
-  -port="$PORT" \
-  -hashLength="$HASH_LENGTH" \
-  -cacheDirectory="$CACHE_DIRECTORY" \
-  -maxCacheSize="$MAX_CACHE_SIZE" \
-  -debugMode="$DEBUG_MODE"
+  --api_id="$API_ID" \
+  --api_hash="$API_HASH" \
+  --bot_token="$BOT_TOKEN" \
+  --base_url="$BASE_URL" \
+  --port="$PORT" \
+  --hash_length="$HASH_LENGTH" \
+  --cache_directory="$CACHE_DIRECTORY" \
+  --max_cache_size="$MAX_CACHE_SIZE" \
+  --debug_mode="$DEBUG_MODE"

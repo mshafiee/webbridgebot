@@ -80,8 +80,11 @@ func FileFromMedia(media tg.MessageMediaClass) (*types.DocumentFile, error) {
 			ID:        document.ID,
 			VideoAttr: videoAttr,
 		}, nil
+
+	case *tg.MessageMediaPhoto:
 		// TODO: add photo support
 	}
+
 	return nil, fmt.Errorf("unexpected type %T", media)
 }
 
