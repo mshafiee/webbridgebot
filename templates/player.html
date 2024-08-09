@@ -7,61 +7,55 @@
     <style>
         body {
             margin: 0;
-            padding: 10px; /* Reduced padding */
+            padding: 20px;
             box-sizing: border-box;
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 2px; /* Reduced gap */
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #f8f9fa;
+            background-color: #222;
+            color: #fff;
         }
         h1 {
-            color: ##a5adb6;
-            font-size: 1.5rem; /* Reduced font size */
-            font-weight: 600;
-            margin: 0; /* Remove margin */
+            color: #00aaff;
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin: 20px 0;
+            text-align: center;
         }
-        #videoPlayer, #audioPlayer {
-            max-width: 100%;
-            max-height: 50vh; /* Adjusted for compact design */
-            display: none; /* Initially hidden */
-            border-radius: 8px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        }
-        #imageViewer {
-            max-width: 100%;
-            max-height: 50vh;
+        #videoPlayer, #audioPlayer, #imageViewer {
+            max-width: 90%;
+            max-height: 60vh;
             display: none;
-            border-radius: 8px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            border-radius: 12px;
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
         }
         .button-container {
             display: flex;
             justify-content: center;
             width: 100%;
-            margin: 5px 0; /* Reduced margin */
+            margin: 20px 0;
+            gap: 15px;
         }
-        #fullscreenButton, #reloadButton {
-            display: none; /* Initially hidden */
-            margin: 0 5px;
-            padding: 5px 15px;
-            font-size: 0.9rem; /* Adjusted font size for compactness */
-            font-weight: 500;
+        .button {
+            padding: 15px 30px;
+            font-size: 1.2rem;
+            font-weight: 600;
             color: #fff;
             background-color: #007bff;
             border: none;
-            border-radius: 4px;
+            border-radius: 8px;
             cursor: pointer;
             transition: background-color 0.3s;
         }
-        #fullscreenButton:hover, #reloadButton:hover {
+        .button:hover {
             background-color: #0056b3;
         }
         #status {
-            font-size: 1rem; /* Adjusted font size */
-            color: #6c757d;
-            margin: 5px 0; /* Adjusted margin */
+            font-size: 1.5rem;
+            margin: 15px 0;
+            text-align: center;
+            color: #aaa;
         }
     </style>
 </head>
@@ -70,10 +64,10 @@
 <p id="status">Chat ID: {{.ChatID}}; Waiting for media...</p>
 <video id="videoPlayer" controls></video>
 <audio id="audioPlayer" controls></audio>
-<img id="imageViewer" controls style="" />
+<img id="imageViewer" />
 <div class="button-container">
-    <button id="reloadButton">Reload</button>
-    <button id="fullscreenButton">Fullscreen</button>
+    <button id="reloadButton" class="button">Reload</button>
+    <button id="fullscreenButton" class="button">Fullscreen</button>
 </div>
 
 <script>
@@ -143,21 +137,21 @@
 
             // Adjust status text based on media type
             if (mimeType.startsWith('video')) {
-                statusText.textContent = 'Video playing...'; // Example status message for video
+                statusText.textContent = 'Playing Video...';
                 fullscreenButton.style.display = 'inline-block';
                 reloadButton.style.display = 'inline-block';
                 fullscreenButton.onclick = () => enterFullScreen(playerToShow);
                 reloadButton.onclick = () => playMedia(latestMedia.url, latestMedia.mimeType);
             } else if (mimeType.startsWith('audio')) {
-                statusText.textContent = 'Audio playing...'; // Example status message for audio
+                statusText.textContent = 'Playing Audio...';
                 fullscreenButton.style.display = 'none';
                 reloadButton.style.display = 'none';
             } else if (mimeType.startsWith('image')) {
-                statusText.textContent = 'Click the photo for full screen';
+                statusText.textContent = 'Viewing Image... Click to view full screen.';
                 fullscreenButton.style.display = 'none';
                 reloadButton.style.display = 'none';
             } else {
-                statusText.textContent = ''; // Clear or set a default message for unsupported media types
+                statusText.textContent = 'Unsupported media type.';
                 fullscreenButton.style.display = 'none';
                 reloadButton.style.display = 'none';
             }
