@@ -15,6 +15,9 @@
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background-color: #222;
             color: #fff;
+            overflow: hidden; /* Prevent scrolling */
+            position: relative; /* Establish stacking context */
+            height: 100vh;
         }
         h1 {
             color: #00aaff;
@@ -22,6 +25,9 @@
             font-weight: 700;
             margin: 20px 0;
             text-align: center;
+            z-index: 2; /* Position above the background */
+            position: relative;
+            text-shadow: 3px 3px 8px rgba(0, 0, 0, 0.7); /* Add shadow to the title */
         }
         #videoPlayer, #audioPlayer, #imageViewer {
             max-width: 90%;
@@ -29,6 +35,8 @@
             display: none;
             border-radius: 12px;
             box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
+            z-index: 2; /* Position above the background */
+            position: relative;
         }
         .button-container {
             display: flex;
@@ -36,6 +44,8 @@
             width: 100%;
             margin: 20px 0;
             gap: 15px;
+            z-index: 3; /* Increased z-index to ensure it's above other elements */
+            position: relative;
         }
         .button {
             padding: 15px 30px;
@@ -47,6 +57,8 @@
             border-radius: 8px;
             cursor: pointer;
             transition: background-color 0.3s;
+            z-index: 3; /* Increased z-index to ensure it's above other elements */
+            position: relative;
         }
         .button:hover {
             background-color: #0056b3;
@@ -56,6 +68,18 @@
             margin: 15px 0;
             text-align: center;
             color: #aaa;
+            z-index: 3; /* Increased z-index to ensure it's above other elements */
+            position: relative;
+            text-shadow: 2px 2px 6px rgba(0, 0, 0, 0.6); /* Add shadow to the status text */
+        }
+        #audioMotionContainer {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1; /* Ensure it is behind all other content */
+            pointer-events: none; /* Allow clicks to pass through */
         }
     </style>
 </head>
@@ -70,7 +94,10 @@
     <button id="fullscreenButton" class="button">Fullscreen</button>
 </div>
 
-<script>
+<div id="audioMotionContainer"></div> <!-- Ensure this is at the bottom for proper stacking -->
+
+<script type="module">
+    import AudioMotionAnalyzer from "https://cdn.skypack.dev/audiomotion-analyzer?min";
     document.addEventListener('DOMContentLoaded', () => {
         const videoPlayer = document.getElementById('videoPlayer');
         const audioPlayer = document.getElementById('audioPlayer');
@@ -113,21 +140,6 @@
             ws.close(); // Ensure the WebSocket is closed properly before attempting to reconnect
         };
 
-        const playMedia = (url, mimeType) => {
-            if (mimeType.startsWith('video')) {
-                updateUIForMedia(videoPlayer, [audioPlayer, imageViewer], mimeType);
-                loadAndPlayMedia(videoPlayer, url);
-            } else if (mimeType.startsWith('audio')) {
-                updateUIForMedia(audioPlayer, [videoPlayer, imageViewer], mimeType);
-                loadAndPlayMedia(audioPlayer, url);
-            } else if (mimeType.startsWith('image')) {
-                updateUIForMedia(imageViewer, [videoPlayer, audioPlayer], mimeType);
-                loadImage(imageViewer, url);
-            } else {
-                console.log('Unsupported media type: ', mimeType);
-            }
-        };
-
         const updateUIForMedia = (playerToShow, playersToHide, mimeType) => {
             playersToHide.forEach(player => {
                 if (player.pause) player.pause();
@@ -145,7 +157,7 @@
             } else if (mimeType.startsWith('audio')) {
                 statusText.textContent = 'Playing Audio...';
                 fullscreenButton.style.display = 'none';
-                reloadButton.style.display = 'none';
+                reloadButton.style.display = 'inline-block'; /* Ensure reload button is shown for audio */
             } else if (mimeType.startsWith('image')) {
                 statusText.textContent = 'Viewing Image... Click to view full screen.';
                 fullscreenButton.style.display = 'none';
@@ -157,16 +169,94 @@
             }
         };
 
+        const playMedia = (url, mimeType) => {
+            if (mimeType.startsWith('video')) {
+                updateUIForMedia(videoPlayer, [audioPlayer, imageViewer], mimeType);
+                loadAndPlayMedia(videoPlayer, url);
+            } else if (mimeType.startsWith('audio')) {
+                updateUIForMedia(audioPlayer, [videoPlayer, imageViewer], mimeType);
+                loadAndPlayMedia(audioPlayer, url);
+                initAudioMotion(audioPlayer);
+            } else if (mimeType.startsWith('image')) {
+                updateUIForMedia(imageViewer, [videoPlayer, audioPlayer], mimeType);
+                loadImage(imageViewer, url);
+            } else {
+                console.log('Unsupported media type: ', mimeType);
+            }
+        };
+
         const loadAndPlayMedia = (player, url) => {
             const uniqueUrl = url + '?nocache=' + new Date().getTime();
             player.src = uniqueUrl;
             player.load();
-            player.play().catch(error => {
-                console.error('Error playing media: ', error);
-                //statusText.textContent = 'Error playing media. Retrying...';
-                //setTimeout(() => playMedia(url, latestMedia.mimeType), 3000);
-            });
+
+            const attemptPlay = () => {
+                player.play().then(() => {
+                    // Clear the status after successful playback
+                    statusText.textContent = '';
+                }).catch(error => {
+                    if (error.name === 'NotAllowedError') {
+                        // User gesture is required to play the media
+                        statusText.textContent = 'Please click on the page to play media.';
+                        document.body.addEventListener('click', attemptPlay, { once: true });
+                    } else {
+                        console.error('Error playing media: ', error);
+                        statusText.textContent = 'Error playing media. Please try reloading.';
+                    }
+                });
+            };
+
+            attemptPlay();
         };
+
+        const initAudioMotion = (audioElement) => {
+            console.log('Initializing AudioMotionAnalyzer');
+            try {
+                const audioMotion = new AudioMotionAnalyzer(document.getElementById("audioMotionContainer"), {
+                    source: audioElement,
+                    height: window.innerHeight,
+                    width: window.innerWidth,
+                    ansiBands: false,
+                    showScaleX: false,
+                    bgAlpha: 0.5,
+                    overlay: true,
+                    mode: 1,
+                    frequencyScale: "log",
+                    radial: true,
+                    showPeaks: false,
+                    showBgColor: true,
+                    radialInvert: true,
+                    channelLayout: "dual-vertical",
+                    smoothing: 0.7
+                });
+
+                window.addEventListener('resize', () => {
+                    audioMotion.setCanvasSize(window.innerWidth, window.innerHeight);
+                });
+
+                const attemptPlay = () => {
+                    audioElement.play().then(() => {
+                        // Clear the status after successful playback
+                        statusText.textContent = '';
+                    }).catch(error => {
+                        if (error.name === 'NotAllowedError') {
+                            // User gesture is required to play the media
+                            statusText.textContent = 'Please click on the page to start audio visualization.';
+                            document.body.addEventListener('click', attemptPlay, { once: true });
+                        } else {
+                            console.error('Error with AudioMotion playback: ', error);
+                            statusText.textContent = 'Error with audio playback. Please try reloading.';
+                        }
+                    });
+                };
+
+                attemptPlay();
+
+            } catch (error) {
+                console.error('AudioMotionAnalyzer error: ', error);
+            }
+        };
+
 
         const loadImage = (imageElement, url) => {
             const uniqueUrl = url + '?nocache=' + new Date().getTime();
