@@ -25,6 +25,7 @@ docker:
 clean:
 	rm -rf $(BUILD_DIR)
 	rm -f webBridgeBot
+	rm -rf .cache
 
 # Phony targets
 .PHONY: all clean webBridgeBot docker

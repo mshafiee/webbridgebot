@@ -18,11 +18,11 @@ import (
 )
 
 const (
-	chunkSize            = int64(1024 * 1024) // 1MB
-	maxRequestsPerSecond = 30                 // Max number of requests per second.
-	maxRetries           = 5                  // Maximum number of retries.
-	baseDelay            = time.Second        // Initial delay for exponential backoff.
-	maxDelay             = 60 * time.Second   // Maximum delay for backoff.
+	chunkSize            = int64(512 * 1024) // 512KB
+	maxRequestsPerSecond = 30                // Max number of requests per second.
+	maxRetries           = 5                 // Maximum number of retries.
+	baseDelay            = time.Second       // Initial delay for exponential backoff.
+	maxDelay             = 60 * time.Second  // Maximum delay for backoff.
 )
 
 var (
@@ -287,10 +287,6 @@ func isTransientError(err error) bool {
 	}
 
 	if errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.ECONNREFUSED) || errors.Is(err, syscall.ECONNABORTED) || errors.Is(err, syscall.ETIMEDOUT) {
-		return true
-	}
-
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return true
 	}
 
