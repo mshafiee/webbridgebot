@@ -8,7 +8,8 @@ import (
 	"github.com/spf13/viper"
 )
 
-const DefaultChunkSize int64 = 1024 * 1024 // 1 MB
+// Set DefaultChunkSize to 512KB to align with Telegram API's upload.getFile limit.
+const DefaultChunkSize int64 = 512 * 1024 // 512 KB
 
 type Configuration struct {
 	ApiID          int
@@ -29,8 +30,8 @@ func LoadConfig(logger *log.Logger) Configuration {
 
 	var cfg Configuration
 	bindViperToConfig(&cfg)
-	validateMandatoryFields(cfg, logger)
-	setDefaultValues(&cfg)
+	setDefaultValues(&cfg)               // Apply defaults before validation for consistency
+	validateMandatoryFields(cfg, logger) // Now, validation runs on values including defaults
 	initializeBinaryCache(&cfg, logger)
 
 	if cfg.DebugMode {
@@ -41,11 +42,15 @@ func LoadConfig(logger *log.Logger) Configuration {
 }
 
 func initializeViper(logger *log.Logger) {
-	viper.SetConfigFile(".env")
-	viper.AutomaticEnv()
+	// viper.SetConfigFile(".env") // Removed, as docker-compose injects directly and run.sh passes flags
+	viper.AutomaticEnv() // This still picks up environment variables
 
+	// Although we are passing env vars via docker-compose, keeping ReadInConfig
+	// can be useful for local development outside of Docker or if a .env
+	// file is intentionally placed inside the container during build.
+	// The warning "Error reading config file" is harmless if env vars are otherwise set.
 	if err := viper.ReadInConfig(); err != nil {
-		logger.Printf("Error reading config file: %v", err)
+		logger.Printf("Warning: Error reading config file (this is expected if .env is only used for docker-compose environment variables): %v", err)
 	}
 }
 
@@ -74,6 +79,8 @@ func validateMandatoryFields(cfg Configuration, logger *log.Logger) {
 	if cfg.BaseURL == "" {
 		logger.Fatal("BASE_URL is required and not set")
 	}
+	// PORT is now set with a default, so it's effectively mandatory via the default.
+	// If you want to explicitly *require* it from an env var, add a check here.
 }
 
 func setDefaultValues(cfg *Configuration) {
@@ -89,6 +96,10 @@ func setDefaultValues(cfg *Configuration) {
 	if cfg.DatabasePath == "" {
 		cfg.DatabasePath = fmt.Sprintf("%s/webBridgeBot.db", cfg.CacheDirectory)
 	}
+	// Add default for Port if not set
+	if cfg.Port == "" {
+		cfg.Port = "8080" // Default port for the web server
+	}
 }
 
 func initializeBinaryCache(cfg *Configuration, logger *log.Logger) {
@@ -96,7 +107,7 @@ func initializeBinaryCache(cfg *Configuration, logger *log.Logger) {
 	cfg.BinaryCache, err = reader.NewBinaryCache(
 		cfg.CacheDirectory,
 		cfg.MaxCacheSize,
-		DefaultChunkSize,
+		DefaultChunkSize, // This now correctly uses 512KB
 	)
 	if err != nil {
 		logger.Fatalf("Error initializing BinaryCache: %v", err)

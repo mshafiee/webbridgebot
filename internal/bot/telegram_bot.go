@@ -125,16 +125,22 @@ func (b *TelegramBot) handleStartCommand(ctx *ext.Context, u *ext.Update) error 
 	chatID := u.EffectiveChat().GetID()
 	user := u.EffectiveUser()
 
+	// IMPORTANT: Prevent the bot from authorizing itself or counting itself as the first user.
+	// This can happen during bot startup/initialization where ctx.Self.ID might trigger a /start-like update.
+	if user.ID == ctx.Self.ID {
+		b.logger.Printf("Ignoring /start command from bot's own ID (%d).", user.ID)
+		return nil // Do not process updates from the bot itself for user management
+	}
+
 	b.logger.Printf("Processing /start command from user: %s (ID: %d) in chat: %d\n", user.FirstName, user.ID, chatID)
 
-	// Check if the user already exists in the database
 	existingUser, err := b.userRepository.GetUserInfo(user.ID)
 	if err != nil {
-		if err == sql.ErrNoRows { // User does not exist
+		if err == sql.ErrNoRows {
 			b.logger.Printf("User %d not found in DB, attempting to register.", user.ID)
-			existingUser = nil // Ensure it's nil so logic proceeds as new user
+			existingUser = nil
 		} else {
-			b.logger.Printf("Failed to retrieve user info: %v", err)
+			b.logger.Printf("Failed to retrieve user info from DB for /start: %v", err)
 			return fmt.Errorf("failed to retrieve user info for start command: %w", err)
 		}
 	}
@@ -148,7 +154,6 @@ func (b *TelegramBot) handleStartCommand(ctx *ext.Context, u *ext.Update) error 
 	isAdmin := false
 	isAuthorized := false
 
-	// If the user doesn't exist, store user info. If it's the first user, auto-authorize and make admin.
 	if existingUser == nil {
 		if isFirstUser {
 			isAuthorized = true
@@ -158,20 +163,20 @@ func (b *TelegramBot) handleStartCommand(ctx *ext.Context, u *ext.Update) error 
 
 		err = b.userRepository.StoreUserInfo(user.ID, chatID, user.FirstName, user.LastName, user.Username, isAuthorized, isAdmin)
 		if err != nil {
-			b.logger.Printf("Failed to store user info: %v", err)
+			b.logger.Printf("Failed to store user info for new user %d: %v", user.ID, err)
 			return fmt.Errorf("failed to store user info: %w", err)
 		}
+		b.logger.Printf("Stored new user %d with isAuthorized=%t, isAdmin=%t", user.ID, isAuthorized, isAdmin)
 
-		// Notify admins if the user is not an admin
 		if !isAdmin {
 			go b.notifyAdminsAboutNewUser(user)
 		}
 	} else {
 		isAuthorized = existingUser.IsAuthorized
 		isAdmin = existingUser.IsAdmin
+		b.logger.Printf("User %d already exists in DB with isAuthorized=%t, isAdmin=%t", user.ID, isAuthorized, isAdmin)
 	}
 
-	// Send the start message to the user
 	webURL := fmt.Sprintf("%s/%d", b.config.BaseURL, chatID)
 	startMsg := fmt.Sprintf(
 		"Hello %s, I am @%s, your bridge between Telegram and the Web!\n"+
@@ -181,16 +186,16 @@ func (b *TelegramBot) handleStartCommand(ctx *ext.Context, u *ext.Update) error 
 	)
 	err = b.sendMediaURLReply(ctx, u, startMsg, webURL)
 	if err != nil {
-		b.logger.Printf("Failed to send start message: %v", err)
+		b.logger.Printf("Failed to send start message to user %d: %v", user.ID, err)
 		return fmt.Errorf("failed to send start message: %w", err)
 	}
 
-	// If the user is not authorized, send an additional message informing them
 	if !isAuthorized {
+		b.logger.Printf("DEBUG: User %d is NOT authorized (isAuthorized=%t) after /start. Sending unauthorized message.", user.ID, isAuthorized) // Added DEBUG log
 		authorizationMsg := "You are not authorized to use this bot yet. Please ask one of the administrators to authorize you and wait until you receive a confirmation."
 		return b.sendReply(ctx, u, authorizationMsg)
 	}
-
+	b.logger.Printf("DEBUG: User %d is authorized. /start command completed successfully.", user.ID) // Added DEBUG log
 	return nil
 }
 
@@ -328,25 +333,28 @@ func (b *TelegramBot) handleAnyUpdate(ctx *ext.Context, u *ext.Update) error {
 
 func (b *TelegramBot) handleMediaMessages(ctx *ext.Context, u *ext.Update) error {
 	chatID := u.EffectiveChat().GetID()
-	b.logger.Printf("Processing media message for chat ID: %d", chatID)
+	user := u.EffectiveUser()
+	b.logger.Printf("Processing media message from user: %s (ID: %d) in chat: %d", user.FirstName, user.ID, chatID)
 
 	if !b.isUserChat(ctx, chatID) {
 		return dispatcher.EndGroups // Only process media from private chats
 	}
 
-	user := u.EffectiveUser()
-
 	existingUser, err := b.userRepository.GetUserInfo(user.ID)
 	if err != nil {
 		if err == sql.ErrNoRows { // User not in DB
-			b.logger.Printf("Unauthorized user %d attempted to send media. Redirecting to start.", user.ID)
-			return b.handleStartCommand(ctx, u) // Redirect to start to handle authorization flow
+			b.logger.Printf("User %d not in DB for media message, sending unauthorized message.", user.ID)
+			authorizationMsg := "You are not authorized to use this bot yet. Please ask one of the administrators to authorize you and wait until you receive a confirmation."
+			return b.sendReply(ctx, u, authorizationMsg)
 		}
-		b.logger.Printf("Failed to retrieve user info for media handling: %v", err)
+		b.logger.Printf("Failed to retrieve user info from DB for media message for user %d: %v", user.ID, err)
 		return fmt.Errorf("failed to retrieve user info for media handling: %w", err)
 	}
 
+	b.logger.Printf("User %d retrieved for media message. isAuthorized=%t, isAdmin=%t", user.ID, existingUser.IsAuthorized, existingUser.IsAdmin) // Added DEBUG log
+
 	if !existingUser.IsAuthorized {
+		b.logger.Printf("DEBUG: User %d is NOT authorized (isAuthorized=%t). Sending unauthorized message for media.", user.ID, existingUser.IsAuthorized) // Added DEBUG log
 		authorizationMsg := "You are not authorized to use this bot yet. Please ask one of the administrators to authorize you and wait until you receive a confirmation."
 		return b.sendReply(ctx, u, authorizationMsg)
 	}
@@ -516,7 +524,7 @@ func (b *TelegramBot) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	userInfo, err := b.userRepository.GetUserInfo(chatID)
 	if err != nil || !userInfo.IsAuthorized {
 		http.Error(w, "Unauthorized WebSocket connection: User not found or not authorized.", http.StatusUnauthorized)
-		b.logger.Printf("Unauthorized WebSocket connection attempt for chatID %d: %v", chatID, err)
+		b.logger.Printf("Unauthorized WebSocket connection attempt for chatID %d: User not found or not authorized (%v)", chatID, err) // Added detailed log
 		return
 	}
 
@@ -630,7 +638,7 @@ func (b *TelegramBot) handleStream(w http.ResponseWriter, r *http.Request) {
 
 	// Send appropriate headers and stream the content.
 	if rangeHeader != "" {
-		b.logger.Printf("Serving partial content for message ID %d: bytes %d-%d of %d", messageID, start, end, contentLength)
+		b.logger.Printf("Serving partial content for message ID %d: bytes %d-%d/%d", messageID, start, end, contentLength)
 		w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, contentLength))
 		w.Header().Set("Content-Length", strconv.FormatInt(end-start+1, 10))
 		w.Header().Set("Content-Type", file.MimeType) // Use actual mime type from file
@@ -672,7 +680,7 @@ func (b *TelegramBot) handlePlayer(w http.ResponseWriter, r *http.Request) {
 	userInfo, err := b.userRepository.GetUserInfo(chatID)
 	if err != nil || !userInfo.IsAuthorized {
 		http.Error(w, "Unauthorized access to player. Please start the bot first.", http.StatusUnauthorized)
-		b.logger.Printf("Unauthorized player access attempt for chatID %d: %v", chatID, err)
+		b.logger.Printf("Unauthorized player access attempt for chatID %d: User not found or not authorized (%v)", chatID, err) // Added detailed log
 		return
 	}
 
