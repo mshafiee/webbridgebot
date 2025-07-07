@@ -18,11 +18,22 @@ import (
 )
 
 const (
-	chunkSize            = int64(512 * 1024) // 512KB
-	maxRequestsPerSecond = 30                // Max number of requests per second.
-	maxRetries           = 5                 // Maximum number of retries.
-	baseDelay            = time.Second       // Initial delay for exponential backoff.
-	maxDelay             = 60 * time.Second  // Maximum delay for backoff.
+	// apiAlignment is the smallest allowed block size for offset and limit in Telegram API's upload.getFile method.
+	apiAlignment = int64(4096)
+	// telegramMaxLimit is the absolute maximum 'limit' allowed by Telegram API's upload.getFile method.
+	telegramMaxLimit = int64(512 * 1024) // 524288 bytes (512 KiB)
+
+	// preferredChunkSize is our desired chunk size for internal processing and caching.
+	// It must be a multiple of apiAlignment.
+	// To avoid potential 'LIMIT_INVALID' errors that some Telegram MTProto servers exhibit
+	// when 'limit' is not `apiAlignment * (power of 2)`, we pick a power-of-2 multiple.
+	// 256 KiB (262144 bytes) = 4096 * 64 (where 64 is 2^6). This is a safe value.
+	preferredChunkSize = int64(256 * 1024) // 262144 bytes (256 KiB)
+
+	maxRequestsPerSecond = 30               // Max number of requests per second.
+	maxRetries           = 5                // Maximum number of retries.
+	baseDelay            = time.Second      // Initial delay for exponential backoff.
+	maxDelay             = 60 * time.Second // Maximum delay for backoff.
 )
 
 var (
@@ -34,20 +45,19 @@ type telegramReader struct {
 	ctx           context.Context
 	log           *log.Logger
 	client        *gotgproto.Client
-	location      tg.InputFileLocationClass // Changed to be more general
-	start         int64                     // Requested start byte for the stream
-	end           int64                     // Requested end byte for the stream
-	next          func() ([]byte, error)    // Function to get the next raw chunk from Telegram/cache
-	buffer        []byte                    // Current buffer holding raw data from a Telegram chunk
-	bytesread     int64                     // Total bytes read from the *requested* stream range
-	chunkSize     int64                     // Fixed size for Telegram API requests and internal chunking
-	i             int64                     // Index within the current `buffer`
-	contentLength int64                     // Total size of the file on Telegram
+	location      tg.InputFileLocationClass
+	start         int64
+	end           int64
+	next          func() ([]byte, error)
+	buffer        []byte
+	bytesread     int64
+	chunkSize     int64 // This instance field will hold the constant value preferredChunkSize
+	i             int64
+	contentLength int64
 	cache         *BinaryCache
 }
 
-// NewTelegramReader initializes a new telegramReader with the given parameters, including a BinaryCache.
-// It now accepts tg.InputFileLocationClass for flexibility to stream documents and photos.
+// NewTelegramReader initializes a new telegramReader.
 func NewTelegramReader(ctx context.Context, client *gotgproto.Client, location tg.InputFileLocationClass, start int64, end int64, contentLength int64, cache *BinaryCache, logger *log.Logger) (io.ReadCloser, error) {
 	r := &telegramReader{
 		ctx:           ctx,
@@ -56,65 +66,54 @@ func NewTelegramReader(ctx context.Context, client *gotgproto.Client, location t
 		client:        client,
 		start:         start,
 		end:           end,
-		chunkSize:     chunkSize,
+		chunkSize:     preferredChunkSize, // Initialize with the constant preferredChunkSize
 		contentLength: contentLength,
 		cache:         cache,
 	}
 	r.log.Println("Initializing TelegramReader.")
-	r.next = r.partStream() // Initialize the function to get the next raw chunk
+	r.next = r.partStream()
 	return r, nil
 }
 
-// Close implements the io.Closer interface but doesn't perform any actions.
+// Close implements the io.Closer interface.
 func (*telegramReader) Close() error {
 	return nil
 }
 
-// Read reads the next chunk of data into the provided byte slice `p`.
-// This function handles applying the requested `start` offset and `end` limit to the raw chunks.
+// Read reads data into the provided byte slice.
 func (r *telegramReader) Read(p []byte) (n int, err error) {
-	// Calculate the total number of bytes we need to serve for the requested range.
 	totalBytesToServe := r.end - r.start + 1
 
-	// If we have already served all requested bytes, return EOF.
 	if r.bytesread >= totalBytesToServe {
 		return 0, io.EOF
 	}
 
-	// If the current buffer is exhausted, fetch the next raw chunk from Telegram/cache.
 	if r.i >= int64(len(r.buffer)) {
-		r.buffer, err = r.next() // Fetch the next raw Telegram chunk (full chunk from Telegram's perspective)
+		r.buffer, err = r.next()
 		if err != nil {
 			return 0, err
 		}
-		r.i = 0 // Reset internal buffer index for the new buffer.
+		r.i = 0
 
-		// If this is the very first chunk being processed, apply the initial offset (`r.start`).
-		// The `r.buffer` currently holds data starting from `initialAlignedOffset`.
-		// We need to skip `r.start - initialAlignedOffset` bytes from the beginning of `r.buffer`.
 		if r.bytesread == 0 {
+			// Calculate the initial offset into the first received chunk.
+			// This initialAlignedOffset is guaranteed to be a multiple of r.chunkSize,
+			// and thus a multiple of apiAlignment (4096), which is required by Telegram.
 			initialAlignedOffset := r.start - (r.start % r.chunkSize)
 			bytesToSkip := r.start - initialAlignedOffset
+
 			if bytesToSkip < int64(len(r.buffer)) {
 				r.buffer = r.buffer[bytesToSkip:]
 			} else {
-				// This implies r.start is beyond the first fetched chunk, or beyond file end.
-				// This should ideally be caught by `totalBytesToServe` checks earlier.
 				r.log.Printf("Read: Bytes to skip (%d) for initial offset (%d) exceeds first buffer length (%d). Likely EOF or invalid range.", bytesToSkip, r.start, len(r.buffer))
-				return 0, io.EOF
+				return 0, io.EOF // This might happen if 'start' is at or beyond contentLength
 			}
 		}
 	}
 
-	// Determine how many bytes to copy from the current buffer into `p`.
-	// Max bytes to copy is limited by:
-	// 1. The capacity of `p` (`len(p)`).
-	// 2. Remaining bytes in `r.buffer` (`len(r.buffer) - r.i`).
-	// 3. Remaining bytes needed for the entire requested range (`totalBytesToServe - r.bytesread`).
 	bytesLeftInBuffer := int64(len(r.buffer)) - r.i
 	bytesRemainingForRequest := totalBytesToServe - r.bytesread
 
-	// Fix: Cast len(p) to int64
 	bytesToCopy := minInt64(int64(len(p)), bytesLeftInBuffer, bytesRemainingForRequest)
 
 	n = copy(p, r.buffer[r.i:r.i+bytesToCopy])
@@ -125,9 +124,8 @@ func (r *telegramReader) Read(p []byte) (n int, err error) {
 	return n, nil
 }
 
-// chunk requests a file chunk from the Telegram API starting at the specified offset or retrieves it from the cache.
+// chunk requests a file chunk from Telegram or cache.
 func (r *telegramReader) chunk(offset int64, limit int64) ([]byte, error) {
-	// Extract a consistent location ID for caching from the InputFileLocationClass.
 	var locationID int64
 	switch l := r.location.(type) {
 	case *tg.InputDocumentFileLocation:
@@ -138,8 +136,8 @@ func (r *telegramReader) chunk(offset int64, limit int64) ([]byte, error) {
 		return nil, fmt.Errorf("unsupported location type for caching: %T", r.location)
 	}
 
-	chunkID := offset / r.chunkSize
-	cachedChunk, err := r.cache.readChunk(locationID, chunkID) // Use the extracted locationID
+	chunkID := offset / r.chunkSize // Use r.chunkSize (preferredChunkSize) for cache chunk ID
+	cachedChunk, err := r.cache.readChunk(locationID, chunkID)
 	if err == nil {
 		r.log.Printf("Cache hit for chunk %d (location %d).", chunkID, locationID)
 		return cachedChunk, nil
@@ -147,20 +145,18 @@ func (r *telegramReader) chunk(offset int64, limit int64) ([]byte, error) {
 
 	r.log.Printf("Cache miss for chunk %d (location %d), requesting from Telegram API.", chunkID, locationID)
 
-	// If not in cache, request it from Telegram
 	req := &tg.UploadGetFileRequest{
 		Offset:   offset,
-		Limit:    int(limit),
-		Location: r.location, // This now accepts tg.InputFileLocationClass directly
+		Limit:    int(limit), // Limit sent to Telegram API
+		Location: r.location,
 	}
 	return r.downloadAndCacheChunk(req, chunkID)
 }
 
-// downloadAndCacheChunk combines rate limiting and exponential backoff.
+// downloadAndCacheChunk handles rate limiting and exponential backoff.
 func (r *telegramReader) downloadAndCacheChunk(req *tg.UploadGetFileRequest, chunkID int64) ([]byte, error) {
-	delay := baseDelay // Start with the base delay for exponential backoff.
+	delay := baseDelay
 
-	// Extract locationID for logging and caching consistently
 	var locationID int64
 	switch l := req.Location.(type) {
 	case *tg.InputDocumentFileLocation:
@@ -168,34 +164,33 @@ func (r *telegramReader) downloadAndCacheChunk(req *tg.UploadGetFileRequest, chu
 	case *tg.InputPhotoFileLocation:
 		locationID = l.ID
 	default:
-		// This should not happen if chunk() handles it first, but as a safeguard.
 		return nil, fmt.Errorf("unsupported location type for caching in downloadAndCacheChunk: %T", req.Location)
 	}
 
 	for retryCount := 0; retryCount < maxRetries; retryCount++ {
-		// Rate limiting: Wait for the rate limiter to allow a new request.
 		mu.Lock()
 		<-rateLimiter.C
 		mu.Unlock()
 
-		res, err := r.client.API().UploadGetFile(r.ctx, req) // This call remains the same, accepting InputFileLocationClass
+		// DEBUG: Log the actual offset and limit being sent to Telegram
+		r.log.Printf("DEBUG: Sending UploadGetFileRequest for chunk %d (location %d): Offset=%d, Limit=%d, LocationType=%T",
+			chunkID, locationID, req.Offset, req.Limit, req.Location)
+
+		res, err := r.client.API().UploadGetFile(r.ctx, req)
 		if err != nil {
-			// Handle FLOOD_WAIT error by sleeping for the specified time and retrying.
 			if floodWait, ok := isFloodWaitError(err); ok {
 				r.log.Printf("FLOOD_WAIT error: retrying in %d seconds.", floodWait)
 				time.Sleep(time.Duration(floodWait) * time.Second)
 				continue
 			}
 
-			// Handle transient errors with exponential backoff.
 			if isTransientError(err) {
 				r.log.Printf("Transient error: %v, retrying in %v", err, delay)
 				time.Sleep(delay)
-				delay = minDuration(delay*2, maxDelay) // Increase delay with exponential backoff, capping at maxDelay.
+				delay = minDuration(delay*2, maxDelay)
 				continue
 			}
 
-			// Return non-transient errors without retrying.
 			r.log.Printf("Error during chunk download: %v", err)
 			return nil, err
 		}
@@ -203,7 +198,9 @@ func (r *telegramReader) downloadAndCacheChunk(req *tg.UploadGetFileRequest, chu
 		switch result := res.(type) {
 		case *tg.UploadFile:
 			chunkData := result.Bytes
-			err = r.cache.writeChunk(locationID, chunkID, chunkData) // Use the extracted locationID
+			// Write to cache using the preferredChunkSize for the part metadata.
+			// The actual data length might be less than 'limit' if it's the last chunk.
+			err = r.cache.writeChunk(locationID, chunkID, chunkData)
 			if err != nil {
 				r.log.Printf("Error writing chunk to cache (location %d, chunk %d): %v", locationID, chunkID, err)
 			}
@@ -213,56 +210,75 @@ func (r *telegramReader) downloadAndCacheChunk(req *tg.UploadGetFileRequest, chu
 		}
 	}
 
-	// If all retries are exhausted, return an error.
 	return nil, fmt.Errorf("failed to download chunk %d for location %d after %d retries", chunkID, locationID, maxRetries)
 }
 
 // partStream returns a function that fetches raw file chunks from the Telegram API.
-// It determines the correct offset and limit for the API call.
 func (r *telegramReader) partStream() func() ([]byte, error) {
-	// Calculate the starting file offset, aligned to `chunkSize`.
-	// This is the first byte offset we will request from Telegram.
+	// currentAlignedFileOffset is the offset at which Telegram API requests will start.
+	// It must be a multiple of r.chunkSize (preferredChunkSize), and thus a multiple of apiAlignment (4096).
 	currentAlignedFileOffset := r.start - (r.start % r.chunkSize)
 
 	return func() ([]byte, error) {
-		// If we've already tried to read past the end of the file, return EOF.
 		if currentAlignedFileOffset >= r.contentLength {
 			return nil, io.EOF
 		}
 
-		// Calculate the limit for the current Telegram API request.
-		// It should be `chunkSize`, but capped by `contentLength` to avoid reading beyond the file.
-		limit := r.chunkSize
-		if currentAlignedFileOffset+limit > r.contentLength {
-			limit = r.contentLength - currentAlignedFileOffset
+		// Calculate the number of bytes remaining from the current aligned offset
+		// to the end of the file.
+		remainingBytesInFile := r.contentLength - currentAlignedFileOffset
+
+		// Determine the base limit for this request. It should be the smaller of
+		// preferredChunkSize (our desired chunk size) and the remaining bytes.
+		limit := preferredChunkSize // Our preferred chunk size
+		if remainingBytesInFile < preferredChunkSize {
+			limit = remainingBytesInFile
 		}
 
-		if limit <= 0 { // No more data to fetch (e.g., if content length is 0 or we're at the very end)
+		// Ensure the limit is rounded UP to the nearest multiple of apiAlignment (4096).
+		// This formula handles both cases:
+		// 1. If 'limit' is already a multiple, it remains unchanged.
+		// 2. If 'limit' is not a multiple, it's rounded up to the next one.
+		if limit > 0 { // Only apply rounding if limit is positive
+			limit = ((limit + apiAlignment - 1) / apiAlignment) * apiAlignment
+		} else { // If limit is 0 or negative, it's an EOF or invalid state, caught by earlier checks.
 			return nil, io.EOF
 		}
 
-		// Fetch the raw chunk from Telegram or cache.
+		// After rounding up, ensure the limit does not exceed Telegram's absolute maximum.
+		if limit > telegramMaxLimit {
+			limit = telegramMaxLimit
+		}
+
+		// If after all calculations, limit somehow became zero or negative, treat as EOF.
+		if limit <= 0 {
+			return nil, io.EOF
+		}
+
+		// Log the actual offset and limit being sent to Telegram for debugging
+		r.log.Printf("DEBUG: Requesting chunk: Offset=%d, Limit=%d (calculated from remaining=%d, preferredChunkSize=%d, pre-rounded_limit=%d)",
+			currentAlignedFileOffset, limit, remainingBytesInFile, preferredChunkSize, remainingBytesInFile)
+
 		chunkData, err := r.chunk(currentAlignedFileOffset, limit)
 		if err != nil {
 			return nil, err
 		}
 
 		if len(chunkData) == 0 {
-			// If we get an empty chunk but haven't reached end of file, it's unexpected.
-			// Treat as EOF or error, depending on desired strictness.
 			r.log.Printf("Received empty chunk from Telegram API for offset %d, limit %d, but content length is %d. Treating as EOF.", currentAlignedFileOffset, limit, r.contentLength)
 			return nil, io.EOF
 		}
 
-		// Advance the offset for the next chunk request.
+		// Advance the aligned offset by r.chunkSize (preferredChunkSize) for the next iteration.
+		// This aligns with our internal chunking strategy for caching and ensures consistent
+		// progression through the file based on our preferred chunk size.
 		currentAlignedFileOffset += r.chunkSize
 
-		// Return the raw chunk. The `Read` method will handle slicing for the requested range.
 		return chunkData, nil
 	}
 }
 
-// isFloodWaitError checks if the error is a FLOOD_WAIT error and returns the wait time if true.
+// isFloodWaitError checks if the error is a FLOOD_WAIT error.
 func isFloodWaitError(err error) (int, bool) {
 	errText := err.Error()
 	matched, _ := regexp.MatchString(`FLOOD_WAIT \(\d+\)`, errText)
@@ -279,7 +295,7 @@ func isFloodWaitError(err error) (int, bool) {
 	return 0, false
 }
 
-// isTransientError checks if an error is transient (e.g., network issues), meaning it might be resolved by retrying.
+// isTransientError checks if an error is transient.
 func isTransientError(err error) bool {
 	var netErr net.Error
 	if errors.As(err, &netErr) {
@@ -287,6 +303,10 @@ func isTransientError(err error) bool {
 	}
 
 	if errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.ECONNREFUSED) || errors.Is(err, syscall.ECONNABORTED) || errors.Is(err, syscall.ETIMEDOUT) {
+		return true
+	}
+
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return true
 	}
 
@@ -304,7 +324,7 @@ func minDuration(a, b time.Duration) time.Duration {
 // minInt64 returns the minimum of multiple int64 values.
 func minInt64(vals ...int64) int64 {
 	if len(vals) == 0 {
-		return 0 // Or handle as an error
+		return 0
 	}
 	minVal := vals[0]
 	for _, v := range vals {

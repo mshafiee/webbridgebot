@@ -8,8 +8,12 @@ import (
 	"github.com/spf13/viper"
 )
 
-// Set DefaultChunkSize to 512KB to align with Telegram API's upload.getFile limit.
-const DefaultChunkSize int64 = 512 * 1024 // 512 KB
+// DefaultChunkSize is the preferred chunk size for internal processing and caching.
+// It must be a multiple of 4096. To avoid potential 'LIMIT_INVALID' errors
+// when the Telegram API's upload.getFile method is called, we select a value
+// that is 4096 multiplied by a power of 2 (e.g., 64).
+// This value is 256 KiB (262144 bytes).
+const DefaultChunkSize int64 = 256 * 1024 // 256 KB
 
 type Configuration struct {
 	ApiID          int
@@ -25,13 +29,51 @@ type Configuration struct {
 	BinaryCache    *reader.BinaryCache
 }
 
-func LoadConfig(logger *log.Logger) Configuration {
-	initializeViper(logger)
+// InitializeViper sets up Viper to read from environment variables and the .env file.
+// This function should be called early in main.
+func InitializeViper(logger *log.Logger) {
+	viper.AutomaticEnv() // Read environment variables (e.g., from docker-compose)
 
+	// Explicitly set the config file name and type for .env
+	viper.SetConfigFile(".env")
+	viper.AddConfigPath(".") // Look for .env in the current directory
+
+	if err := viper.ReadInConfig(); err != nil {
+		// Log a warning if .env not found. This is normal if config comes from env vars or flags.
+		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
+			logger.Printf("Warning: .env config file not found (this is expected if configuration is solely via environment variables or command-line flags).")
+		} else {
+			logger.Printf("Warning: Error reading config file from .env: %v", err)
+		}
+	}
+	// Note: `viper.BindPFlags` will be called in main.go after flags are defined.
+}
+
+// LoadConfig loads configuration from Viper's resolved settings.
+// Viper should have already read from files, environment variables, and command-line flags.
+func LoadConfig(logger *log.Logger) Configuration {
 	var cfg Configuration
-	bindViperToConfig(&cfg)
-	setDefaultValues(&cfg)               // Apply defaults before validation for consistency
-	validateMandatoryFields(cfg, logger) // Now, validation runs on values including defaults
+
+	// Direct assignments from Viper's resolved values
+	// Use lowercase for Viper keys as they are typically derived from flag names
+	// or environment variable names (if using AutomaticEnv).
+	cfg.ApiID = viper.GetInt("api_id")
+	cfg.ApiHash = viper.GetString("api_hash")
+	cfg.BotToken = viper.GetString("bot_token")
+	cfg.BaseURL = viper.GetString("base_url")
+	cfg.Port = viper.GetString("port")
+	cfg.HashLength = viper.GetInt("hash_length")
+	cfg.CacheDirectory = viper.GetString("cache_directory")
+	cfg.MaxCacheSize = viper.GetInt64("max_cache_size")
+	cfg.DebugMode = viper.GetBool("debug_mode")
+
+	// Apply default values if not set by any source (flags, env, file)
+	setDefaultValues(&cfg)
+
+	// Validate after all sources (flags, env, defaults) have been applied
+	validateMandatoryFields(cfg, logger)
+
+	// Initialize BinaryCache after all config values are final
 	initializeBinaryCache(&cfg, logger)
 
 	if cfg.DebugMode {
@@ -39,31 +81,6 @@ func LoadConfig(logger *log.Logger) Configuration {
 	}
 
 	return cfg
-}
-
-func initializeViper(logger *log.Logger) {
-	// viper.SetConfigFile(".env") // Removed, as docker-compose injects directly and run.sh passes flags
-	viper.AutomaticEnv() // This still picks up environment variables
-
-	// Although we are passing env vars via docker-compose, keeping ReadInConfig
-	// can be useful for local development outside of Docker or if a .env
-	// file is intentionally placed inside the container during build.
-	// The warning "Error reading config file" is harmless if env vars are otherwise set.
-	if err := viper.ReadInConfig(); err != nil {
-		logger.Printf("Warning: Error reading config file (this is expected if .env is only used for docker-compose environment variables): %v", err)
-	}
-}
-
-func bindViperToConfig(cfg *Configuration) {
-	cfg.ApiID = viper.GetInt("API_ID")
-	cfg.ApiHash = viper.GetString("API_HASH")
-	cfg.BotToken = viper.GetString("BOT_TOKEN")
-	cfg.BaseURL = viper.GetString("BASE_URL")
-	cfg.Port = viper.GetString("PORT")
-	cfg.HashLength = viper.GetInt("HASH_LENGTH")
-	cfg.CacheDirectory = viper.GetString("CACHE_DIRECTORY")
-	cfg.MaxCacheSize = viper.GetInt64("MAX_CACHE_SIZE")
-	cfg.DebugMode = viper.GetBool("DEBUG_MODE")
 }
 
 func validateMandatoryFields(cfg Configuration, logger *log.Logger) {
@@ -79,8 +96,6 @@ func validateMandatoryFields(cfg Configuration, logger *log.Logger) {
 	if cfg.BaseURL == "" {
 		logger.Fatal("BASE_URL is required and not set")
 	}
-	// PORT is now set with a default, so it's effectively mandatory via the default.
-	// If you want to explicitly *require* it from an env var, add a check here.
 }
 
 func setDefaultValues(cfg *Configuration) {
@@ -96,9 +111,10 @@ func setDefaultValues(cfg *Configuration) {
 	if cfg.DatabasePath == "" {
 		cfg.DatabasePath = fmt.Sprintf("%s/webBridgeBot.db", cfg.CacheDirectory)
 	}
-	// Add default for Port if not set
+	// This default for Port is now handled by Cobra's flag definition in main.go
+	// but keeping a fallback here is harmless if cfg.Port is somehow still empty
 	if cfg.Port == "" {
-		cfg.Port = "8080" // Default port for the web server
+		cfg.Port = "8080"
 	}
 }
 
@@ -107,7 +123,7 @@ func initializeBinaryCache(cfg *Configuration, logger *log.Logger) {
 	cfg.BinaryCache, err = reader.NewBinaryCache(
 		cfg.CacheDirectory,
 		cfg.MaxCacheSize,
-		DefaultChunkSize, // This now correctly uses 512KB
+		DefaultChunkSize,
 	)
 	if err != nil {
 		logger.Fatalf("Error initializing BinaryCache: %v", err)
