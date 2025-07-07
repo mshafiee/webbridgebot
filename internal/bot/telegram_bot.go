@@ -13,6 +13,10 @@ import (
 	"webBridgeBot/internal/data"
 	"webBridgeBot/internal/reader"
 
+	"webBridgeBot/internal/config"
+	"webBridgeBot/internal/types"
+	"webBridgeBot/internal/utils"
+
 	"github.com/celestix/gotgproto"
 	"github.com/celestix/gotgproto/dispatcher"
 	"github.com/celestix/gotgproto/dispatcher/handlers"
@@ -20,14 +24,10 @@ import (
 	"github.com/celestix/gotgproto/ext"
 	"github.com/celestix/gotgproto/sessionMaker"
 	"github.com/celestix/gotgproto/storage"
-	gtypes "github.com/celestix/gotgproto/types"
 	"github.com/glebarez/sqlite"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 	"github.com/gotd/td/tg"
-	"webBridgeBot/internal/config"
-	"webBridgeBot/internal/types"
-	"webBridgeBot/internal/utils"
 )
 
 const (
@@ -112,12 +112,13 @@ func (b *TelegramBot) registerHandlers() {
 	clientDispatcher := b.tgClient.Dispatcher
 	clientDispatcher.AddHandler(handlers.NewCommand("start", b.handleStartCommand))
 	clientDispatcher.AddHandler(handlers.NewCommand("authorize", b.handleAuthorizeUser))
-	clientDispatcher.AddHandler(handlers.NewCommand("deauthorize", b.handleDeauthorizeUser)) // Add this line
+	clientDispatcher.AddHandler(handlers.NewCommand("deauthorize", b.handleDeauthorizeUser))
 	clientDispatcher.AddHandler(handlers.NewCallbackQuery(filters.CallbackQuery.Prefix("cb_"), b.handleCallbackQuery))
-	clientDispatcher.AddHandler(handlers.NewAnyUpdate(b.handleAnyUpdate))
+	clientDispatcher.AddHandler(handlers.NewAnyUpdate(b.handleAnyUpdate)) // Can be removed for production to reduce noise
+	// These filters handle both forwarded and directly uploaded media
 	clientDispatcher.AddHandler(handlers.NewMessage(filters.Message.Audio, b.handleMediaMessages))
 	clientDispatcher.AddHandler(handlers.NewMessage(filters.Message.Video, b.handleMediaMessages))
-	clientDispatcher.AddHandler(handlers.NewMessage(filters.Message.Photo, b.handleMediaMessages))
+	clientDispatcher.AddHandler(handlers.NewMessage(filters.Message.Photo, b.handleMediaMessages)) // Now fully supported
 }
 
 func (b *TelegramBot) handleStartCommand(ctx *ext.Context, u *ext.Update) error {
@@ -129,19 +130,25 @@ func (b *TelegramBot) handleStartCommand(ctx *ext.Context, u *ext.Update) error 
 	// Check if the user already exists in the database
 	existingUser, err := b.userRepository.GetUserInfo(user.ID)
 	if err != nil {
-		b.logger.Printf("Failed to retrieve user info: %v", err)
+		if err == sql.ErrNoRows { // User does not exist
+			b.logger.Printf("User %d not found in DB, attempting to register.", user.ID)
+			existingUser = nil // Ensure it's nil so logic proceeds as new user
+		} else {
+			b.logger.Printf("Failed to retrieve user info: %v", err)
+			return fmt.Errorf("failed to retrieve user info for start command: %w", err)
+		}
 	}
 
-	// Check if the user is the first user in the database
 	isFirstUser, err := b.userRepository.IsFirstUser()
 	if err != nil {
 		b.logger.Printf("Failed to check if user is first: %v", err)
+		return fmt.Errorf("failed to check first user status: %w", err)
 	}
 
 	isAdmin := false
 	isAuthorized := false
 
-	// If the user doesn't exist or is the first user, store user info or update their record
+	// If the user doesn't exist, store user info. If it's the first user, auto-authorize and make admin.
 	if existingUser == nil {
 		if isFirstUser {
 			isAuthorized = true
@@ -152,6 +159,7 @@ func (b *TelegramBot) handleStartCommand(ctx *ext.Context, u *ext.Update) error 
 		err = b.userRepository.StoreUserInfo(user.ID, chatID, user.FirstName, user.LastName, user.Username, isAuthorized, isAdmin)
 		if err != nil {
 			b.logger.Printf("Failed to store user info: %v", err)
+			return fmt.Errorf("failed to store user info: %w", err)
 		}
 
 		// Notify admins if the user is not an admin
@@ -167,13 +175,14 @@ func (b *TelegramBot) handleStartCommand(ctx *ext.Context, u *ext.Update) error 
 	webURL := fmt.Sprintf("%s/%d", b.config.BaseURL, chatID)
 	startMsg := fmt.Sprintf(
 		"Hello %s, I am @%s, your bridge between Telegram and the Web!\n"+
-			"You can forward media to this bot, and I will play it on your web player instantly.\n"+
+			"You can forward or *directly upload* media to this bot, and I will play it on your web player instantly.\n"+
 			"Click on 'Open Web URL' below or access your player here: %s",
 		user.FirstName, ctx.Self.Username, webURL,
 	)
 	err = b.sendMediaURLReply(ctx, u, startMsg, webURL)
 	if err != nil {
 		b.logger.Printf("Failed to send start message: %v", err)
+		return fmt.Errorf("failed to send start message: %w", err)
 	}
 
 	// If the user is not authorized, send an additional message informing them
@@ -194,13 +203,18 @@ func (b *TelegramBot) notifyAdminsAboutNewUser(newUser *tg.User) {
 	}
 
 	var notificationMsg string
-	if username, hasUsername := newUser.GetUsername(); hasUsername {
-		notificationMsg = fmt.Sprintf("A new user has joined: @%s %s %s\nID: %d\nUse this command: /authorize %d", username, newUser.FirstName, newUser.LastName, newUser.ID, newUser.ID)
+	username, hasUsername := newUser.GetUsername()
+	if hasUsername {
+		notificationMsg = fmt.Sprintf("A new user has joined: @%s (%s %s)\nID: %d\nUse this command: /authorize %d", username, newUser.FirstName, newUser.LastName, newUser.ID, newUser.ID)
 	} else {
 		notificationMsg = fmt.Sprintf("A new user has joined: %s %s\nID: %d\nUse this command: /authorize %d", newUser.FirstName, newUser.LastName, newUser.ID, newUser.ID)
 	}
 
 	for _, admin := range admins {
+		// Avoid notifying the new user if they happened to be the first admin
+		if admin.UserID == newUser.ID {
+			continue
+		}
 		b.logger.Printf("Notifying admin %d about new user %d", admin.UserID, newUser.ID)
 		_, err := b.tgCtx.SendMessage(admin.ChatID, &tg.MessagesSendMessageRequest{Message: notificationMsg})
 		if err != nil {
@@ -241,11 +255,19 @@ func (b *TelegramBot) handleAuthorizeUser(ctx *ext.Context, u *ext.Update) error
 		return b.sendReply(ctx, u, "Failed to authorize the user.")
 	}
 
-	adminMsg := ""
+	adminMsgSuffix := ""
 	if isAdmin {
-		adminMsg = " as an admin"
+		adminMsgSuffix = " as an admin"
 	}
-	return b.sendReply(ctx, u, fmt.Sprintf("User %d has been authorized%s.", targetUserID, adminMsg))
+	// Notify the target user
+	targetUserInfo, err := b.userRepository.GetUserInfo(targetUserID)
+	if err == nil {
+		b.tgCtx.SendMessage(targetUserInfo.ChatID, &tg.MessagesSendMessageRequest{Message: fmt.Sprintf("You have been authorized%s to use WebBridgeBot!", adminMsgSuffix)})
+	} else {
+		b.logger.Printf("Could not send notification to authorized user %d: %v", targetUserID, err)
+	}
+
+	return b.sendReply(ctx, u, fmt.Sprintf("User %d has been authorized%s.", targetUserID, adminMsgSuffix))
 }
 
 func (b *TelegramBot) handleDeauthorizeUser(ctx *ext.Context, u *ext.Update) error {
@@ -278,10 +300,29 @@ func (b *TelegramBot) handleDeauthorizeUser(ctx *ext.Context, u *ext.Update) err
 		return b.sendReply(ctx, u, "Failed to deauthorize the user.")
 	}
 
+	// Notify the target user
+	targetUserInfo, err := b.userRepository.GetUserInfo(targetUserID)
+	if err == nil {
+		b.tgCtx.SendMessage(targetUserInfo.ChatID, &tg.MessagesSendMessageRequest{Message: "You have been deauthorized from using WebBridgeBot."})
+	} else {
+		b.logger.Printf("Could not send notification to deauthorized user %d: %v", targetUserID, err)
+	}
+
 	return b.sendReply(ctx, u, fmt.Sprintf("User %d has been deauthorized.", targetUserID))
 }
 
 func (b *TelegramBot) handleAnyUpdate(ctx *ext.Context, u *ext.Update) error {
+	// This handler is useful for debugging to see all incoming updates.
+	// Uncomment the following lines for detailed update logging:
+	/*
+		b.logger.Printf("Received update: %T", u.Update)
+		if u.EffectiveMessage != nil {
+			b.logger.Printf("Effective message from user %d in chat %d: %s", u.EffectiveUser().ID, u.EffectiveChat().GetID(), u.EffectiveMessage.Text)
+			if u.EffectiveMessage.Message.Media != nil {
+				b.logger.Printf("Media type: %T", u.EffectiveMessage.Message.Media)
+			}
+		}
+	*/
 	return nil
 }
 
@@ -290,14 +331,19 @@ func (b *TelegramBot) handleMediaMessages(ctx *ext.Context, u *ext.Update) error
 	b.logger.Printf("Processing media message for chat ID: %d", chatID)
 
 	if !b.isUserChat(ctx, chatID) {
-		return dispatcher.EndGroups
+		return dispatcher.EndGroups // Only process media from private chats
 	}
 
 	user := u.EffectiveUser()
 
 	existingUser, err := b.userRepository.GetUserInfo(user.ID)
 	if err != nil {
-		return fmt.Errorf("failed to retrieve user info: %v", err)
+		if err == sql.ErrNoRows { // User not in DB
+			b.logger.Printf("Unauthorized user %d attempted to send media. Redirecting to start.", user.ID)
+			return b.handleStartCommand(ctx, u) // Redirect to start to handle authorization flow
+		}
+		b.logger.Printf("Failed to retrieve user info for media handling: %v", err)
+		return fmt.Errorf("failed to retrieve user info for media handling: %w", err)
 	}
 
 	if !existingUser.IsAuthorized {
@@ -305,15 +351,11 @@ func (b *TelegramBot) handleMediaMessages(ctx *ext.Context, u *ext.Update) error
 		return b.sendReply(ctx, u, authorizationMsg)
 	}
 
-	if supported, err := isSupportedMedia(u.EffectiveMessage); !supported || err != nil {
-		b.logger.Printf("Unsupported media type received in chat ID %d", chatID)
-		return dispatcher.EndGroups
-	}
-
+	// Check if media type is supported and extract DocumentFile
 	file, err := utils.FileFromMedia(u.EffectiveMessage.Message.Media)
 	if err != nil {
-		b.logger.Printf("Error extracting media file for chat ID %d, message ID %d: %v", u.EffectiveChat().GetID(), u.EffectiveMessage.Message.ID, err)
-		return err
+		b.logger.Printf("Error processing media message from chat ID %d, message ID %d: %v", chatID, u.EffectiveMessage.Message.ID, err)
+		return b.sendReply(ctx, u, fmt.Sprintf("Unsupported media type or error processing file: %v", err))
 	}
 
 	fileURL := b.generateFileURL(u.EffectiveMessage.Message.ID, file)
@@ -388,11 +430,11 @@ func (b *TelegramBot) constructWebSocketMessage(fileURL string, file *types.Docu
 	return map[string]string{
 		"url":      fileURL,
 		"fileName": file.FileName,
-		"fileId":   strconv.Itoa(int(file.ID)),
+		"fileId":   strconv.FormatInt(file.ID, 10), // Use FormatInt for int64
 		"mimeType": file.MimeType,
-		"duration": strconv.Itoa(int(file.VideoAttr.Duration)),
-		"width":    strconv.Itoa(file.VideoAttr.W),
-		"height":   strconv.Itoa(file.VideoAttr.H),
+		"duration": strconv.Itoa(file.Duration),
+		"width":    strconv.Itoa(file.Width),
+		"height":   strconv.Itoa(file.Height),
 	}
 }
 
@@ -415,8 +457,8 @@ func (b *TelegramBot) publishToWebSocket(chatID int64, message map[string]string
 		}
 		if err := client.WriteMessage(websocket.TextMessage, messageJSON); err != nil {
 			log.Println("Error sending WebSocket message:", err)
-			delete(wsClients, chatID)
-			client.Close()
+			delete(wsClients, chatID) // Remove client if write fails
+			client.Close()            // Close the problematic connection
 		}
 	}
 }
@@ -429,36 +471,23 @@ func (b *TelegramBot) handleCallbackQuery(ctx *ext.Context, u *ext.Update) error
 			return err
 		}
 
+		// Re-fetch the message and file from Telegram (or cache)
 		file, err := utils.FileFromMessage(ctx, b.tgClient, messageID)
 		if err != nil {
-			b.logger.Printf("Error fetching file for message ID %d: %v", messageID, err)
+			b.logger.Printf("Error fetching file for message ID %d for callback: %v", messageID, err)
+			return fmt.Errorf("failed to get file from message for callback: %w", err)
 		}
 
 		wsMsg := b.constructWebSocketMessage(b.generateFileURL(messageID, file), file)
 		b.publishToWebSocket(u.EffectiveChat().GetID(), wsMsg)
 
 		_, _ = ctx.AnswerCallback(&tg.MessagesSetBotCallbackAnswerRequest{
-			Alert:   true,
+			Alert:   false, // Set to false to avoid pop-up message for successful resend
 			QueryID: u.CallbackQuery.QueryID,
 			Message: fmt.Sprintf("The %s file has been sent to the web player.", file.FileName),
 		})
 	}
 	return nil
-}
-
-func isSupportedMedia(m *gtypes.Message) (bool, error) {
-	if m.Media == nil {
-		return false, dispatcher.EndGroups
-	}
-	switch m.Media.(type) {
-	case *tg.MessageMediaDocument:
-		return true, nil
-	case *tg.MessageMediaPhoto:
-		// TODO: add photo support
-		return false, nil
-	default:
-		return false, nil
-	}
 }
 
 func (b *TelegramBot) startWebServer() {
@@ -475,7 +504,7 @@ func (b *TelegramBot) startWebServer() {
 	}
 }
 
-// handleWebSocket manages WebSocket connections.
+// handleWebSocket manages WebSocket connections and adds authorization.
 func (b *TelegramBot) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	chatID, err := b.parseChatID(mux.Vars(r))
 	if err != nil {
@@ -483,30 +512,39 @@ func (b *TelegramBot) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Authorize user based on chatID (assuming chatID from URL is the user's ID in private chat)
+	userInfo, err := b.userRepository.GetUserInfo(chatID)
+	if err != nil || !userInfo.IsAuthorized {
+		http.Error(w, "Unauthorized WebSocket connection: User not found or not authorized.", http.StatusUnauthorized)
+		b.logger.Printf("Unauthorized WebSocket connection attempt for chatID %d: %v", chatID, err)
+		return
+	}
+
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Println(err)
+		log.Println("WebSocket upgrade error:", err)
 		return
 	}
 	defer ws.Close()
 
-	// Register the WebSocket client.
 	wsClients[chatID] = ws
+	b.logger.Printf("WebSocket client connected for chat ID: %d", chatID)
 
 	for {
 		// Keep the connection alive or handle control messages.
 		messageType, p, err := ws.ReadMessage()
 		if err != nil {
-			log.Println(err)
+			log.Println("WebSocket read error:", err)
 			delete(wsClients, chatID)
 			break
 		}
 		// Echo the message back (optional, for keeping the connection alive).
 		if err := ws.WriteMessage(messageType, p); err != nil {
-			log.Println(err)
+			log.Println("WebSocket write error:", err)
 			break
 		}
 	}
+	b.logger.Printf("WebSocket client disconnected for chat ID: %d", chatID)
 }
 
 // handleStream handles the file streaming from Telegram.
@@ -526,7 +564,7 @@ func (b *TelegramBot) handleStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Fetch the file from Telegram.
+	// Fetch the file information from Telegram (or cache)
 	file, err := utils.FileFromMessage(ctx, b.tgClient, messageID)
 	if err != nil {
 		b.logger.Printf("Error fetching file for message ID %d: %v", messageID, err)
@@ -534,6 +572,7 @@ func (b *TelegramBot) handleStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Hash verification
 	expectedHash := utils.PackFile(file.FileName, file.FileSize, file.MimeType, file.ID)
 	if !utils.CheckHash(authHash, expectedHash, b.config.HashLength) {
 		b.logger.Printf("Hash verification failed for message ID %d from client %s", messageID, r.RemoteAddr)
@@ -594,19 +633,19 @@ func (b *TelegramBot) handleStream(w http.ResponseWriter, r *http.Request) {
 		b.logger.Printf("Serving partial content for message ID %d: bytes %d-%d of %d", messageID, start, end, contentLength)
 		w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, contentLength))
 		w.Header().Set("Content-Length", strconv.FormatInt(end-start+1, 10))
-		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("Content-Type", file.MimeType) // Use actual mime type from file
 		w.WriteHeader(http.StatusPartialContent)
 	} else {
 		b.logger.Printf("Serving full content for message ID %d", messageID)
 		w.Header().Set("Content-Length", strconv.FormatInt(contentLength, 10))
-		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("Content-Type", file.MimeType) // Use actual mime type from file
 		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, file.FileName))
 	}
 
 	// Stream the content to the client.
 	if _, err := io.Copy(w, lr); err != nil {
 		b.logger.Printf("Error streaming content for message ID %d: %v", messageID, err)
-		http.Error(w, "Error streaming content", http.StatusInternalServerError)
+		// Headers might already be sent, so just log the error.
 	}
 }
 
@@ -619,12 +658,21 @@ func (b *TelegramBot) parseChatID(vars map[string]string) (int64, error) {
 	return strconv.ParseInt(chatIDStr, 10, 64)
 }
 
+// handlePlayer serves the HTML player page and adds authorization.
 func (b *TelegramBot) handlePlayer(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Received request for player: %s", r.URL.Path)
 
 	chatID, err := b.parseChatID(mux.Vars(r))
 	if err != nil {
 		http.Error(w, "Invalid chat ID", http.StatusBadRequest)
+		return
+	}
+
+	// Authorize user based on chatID (assuming chatID from URL is the user's ID in private chat)
+	userInfo, err := b.userRepository.GetUserInfo(chatID)
+	if err != nil || !userInfo.IsAuthorized {
+		http.Error(w, "Unauthorized access to player. Please start the bot first.", http.StatusUnauthorized)
+		b.logger.Printf("Unauthorized player access attempt for chatID %d: %v", chatID, err)
 		return
 	}
 

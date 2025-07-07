@@ -10,17 +10,20 @@ import (
 	"github.com/gotd/td/tg"
 )
 
-var cache *Cache
-
+// Define the Cache struct explicitly
 type Cache struct {
 	cache *freecache.Cache
 	mu    sync.RWMutex
 }
 
+var cache *Cache
+
 func init() {
 	gob.Register(types.DocumentFile{})
-	gob.Register(tg.InputDocumentFileLocation{})
-	cache = &Cache{cache: freecache.NewCache(10 * 1024 * 1024)}
+	// Register the concrete types that implement tg.InputFileLocationClass
+	gob.Register(&tg.InputDocumentFileLocation{})
+	gob.Register(&tg.InputPhotoFileLocation{})
+	cache = &Cache{cache: freecache.NewCache(10 * 1024 * 1024)} // 10MB default cache size
 }
 
 func GetCache() *Cache {
@@ -30,7 +33,7 @@ func GetCache() *Cache {
 func (c *Cache) Get(key string, value *types.DocumentFile) error {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	data, err := cache.cache.Get([]byte(key))
+	data, err := c.cache.Get([]byte(key)) // Use c.cache here
 	if err != nil {
 		return err
 	}
@@ -51,13 +54,13 @@ func (c *Cache) Set(key string, value *types.DocumentFile, expireSeconds int) er
 	if err != nil {
 		return err
 	}
-	cache.cache.Set([]byte(key), buf.Bytes(), expireSeconds)
+	c.cache.Set([]byte(key), buf.Bytes(), expireSeconds) // Use c.cache here
 	return nil
 }
 
 func (c *Cache) Delete(key string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	cache.cache.Del([]byte(key))
+	c.cache.Del([]byte(key)) // Use c.cache here
 	return nil
 }

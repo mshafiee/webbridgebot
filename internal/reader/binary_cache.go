@@ -4,7 +4,6 @@ import (
 	"container/heap"
 	"encoding/binary"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -13,10 +12,10 @@ import (
 
 type chunkMetadata struct {
 	LocationID int64
-	ChunkIndex int64
+	ChunkIndex int64 // Index of this part within the logical chunk
 	Offset     int64
-	Size       int64 // Actual size of the data in this chunk, not the padded size
-	Timestamp  int64
+	Size       int64 // Actual size of the data in this part, not the padded size
+	Timestamp  int64 // Timestamp for LRU
 }
 
 // Helper methods for converting the `Timestamp` to/from `time.Time`
@@ -31,13 +30,13 @@ func (meta *chunkMetadata) GetTimestamp() time.Time {
 type BinaryCache struct {
 	cashFile       *os.File
 	metadataFile   *os.File
-	metadata       map[int64]map[int64][]chunkMetadata // Map of location ID to chunk ID to metadata
+	metadata       map[int64]map[int64][]chunkMetadata // Map of location ID to chunk ID to a slice of its parts' metadata
 	metadataLock   sync.Mutex
 	chunkLock      sync.Mutex
 	cacheSize      int64
 	maxCacheSize   int64
 	lruQueue       *PriorityQueue
-	evictionList   []*chunkMetadata
+	evictionList   []*chunkMetadata // List of offsets available for reuse
 	fixedChunkSize int64
 }
 
@@ -127,37 +126,82 @@ func NewBinaryCache(cacheDir string, maxCacheSize int64, fixedChunkSize int64) (
 		return nil, err
 	}
 
-	// Initialize the priority queue (LRU queue)
-	heap.Init(bc.lruQueue)
+	// Initialize the priority queue (LRU queue) from loaded metadata
+	// heap.Init(bc.lruQueue) // This is implicitly done by addLRU in loadMetadata, but calling it here ensures heap properties are correct if items are added manually too.
 
 	return bc, nil
 }
 
-// Write a chunk to the binary cashFile
+// Write a logical chunk (which may consist of multiple fixed-size parts) to the binary cashFile.
 func (bc *BinaryCache) writeChunk(locationID int64, chunkID int64, chunk []byte) error {
 	bc.chunkLock.Lock()
 	defer bc.chunkLock.Unlock()
 
+	// Ensure the locationID map exists
 	if _, exists := bc.metadata[locationID]; !exists {
 		bc.metadata[locationID] = make(map[int64][]chunkMetadata)
 	}
 
-	// Evict if cache size exceeds max size before writing new data
+	// If this chunk already exists, remove its old metadata and free space for reuse.
+	if oldMetas, exists := bc.metadata[locationID][chunkID]; exists {
+		for _, meta := range oldMetas {
+			bc.evictionList = append(bc.evictionList, &meta) // Add to the list of evicted offsets
+			bc.cacheSize -= bc.fixedChunkSize
+		}
+		delete(bc.metadata[locationID], chunkID) // Remove old logical chunk entry
+	}
+
+	// Evict if cache size exceeds max size BEFORE writing new data
 	bc.evictIfNeeded()
 
-	// Split the chunk into fixed-sized chunks
+	// Split the incoming chunk into fixed-sized parts
 	chunkParts := bc.splitChunk(chunk)
 
-	// Write each part
+	newChunkMetas := make([]chunkMetadata, 0, len(chunkParts))
+	timestamp := time.Now().Unix() // Use a single timestamp for the whole logical chunk
+
+	// Write each part to the cashFile and collect its metadata
 	for i, part := range chunkParts {
-		err := bc.writeChunkPart(locationID, chunkID, int64(i), part)
+		offset, err := bc.getWriteOffset() // Get an offset for this part (reuse or append)
 		if err != nil {
 			return err
 		}
+
+		paddedPart := make([]byte, bc.fixedChunkSize)
+		copy(paddedPart, part) // Pad the part to the fixed chunk size
+
+		_, err = bc.cashFile.WriteAt(paddedPart, offset)
+		if err != nil {
+			return err
+		}
+
+		meta := chunkMetadata{
+			LocationID: locationID,
+			ChunkIndex: int64(i), // Index of this part within the logical chunk
+			Offset:     offset,
+			Size:       int64(len(part)),
+			Timestamp:  timestamp, // All parts of a logical chunk share the same timestamp for LRU
+		}
+		newChunkMetas = append(newChunkMetas, meta)
+		bc.cacheSize += bc.fixedChunkSize // Increment cache size by the fixed size of the stored part
 	}
+
+	// After all parts are written, add the logical chunk to metadata and LRU queue
+	bc.metadata[locationID][chunkID] = newChunkMetas
+	bc.addLRU(locationID, chunkID, timestamp) // Add once for the entire logical chunk
 
 	// Save the metadata to the metadata file
 	return bc.saveMetadata()
+}
+
+// Helper to get an offset for writing a chunk part (reuse an evicted slot or append to end)
+func (bc *BinaryCache) getWriteOffset() (int64, error) {
+	if len(bc.evictionList) > 0 {
+		evictedMeta := bc.evictionList[len(bc.evictionList)-1]
+		bc.evictionList = bc.evictionList[:len(bc.evictionList)-1] // Remove the last element
+		return evictedMeta.Offset, nil
+	}
+	return bc.cashFile.Seek(0, os.SEEK_END) // Append to end of file
 }
 
 // Helper method to split the chunk into fixed-size parts
@@ -174,53 +218,7 @@ func (bc *BinaryCache) splitChunk(chunk []byte) [][]byte {
 	return parts
 }
 
-// Helper method to write a part of the chunk
-func (bc *BinaryCache) writeChunkPart(locationID, chunkID, partIndex int64, part []byte) error {
-	var offset int64
-	var err error
-
-	// Check if we can overwrite an evicted chunk
-	if len(bc.evictionList) > 0 {
-		evictedMeta := bc.evictionList[len(bc.evictionList)-1]
-		bc.evictionList = bc.evictionList[:len(bc.evictionList)-1] // Remove the last element
-		offset = evictedMeta.Offset
-	} else {
-		offset, err = bc.cashFile.Seek(0, os.SEEK_END)
-		if err != nil {
-			return err
-		}
-	}
-
-	// Pad the part to the fixed chunk size if necessary
-	paddedPart := make([]byte, bc.fixedChunkSize)
-	copy(paddedPart, part)
-
-	// Write the padded part to the file
-	_, err = bc.cashFile.WriteAt(paddedPart, offset)
-	if err != nil {
-		return err
-	}
-
-	timestamp := time.Now().Unix()
-	meta := chunkMetadata{
-		LocationID: locationID,
-		ChunkIndex: partIndex,
-		Offset:     offset,
-		Size:       int64(len(part)), // Store the actual size of the part, not the padded size
-		Timestamp:  timestamp,        // Store the current timestamp as int64
-	}
-
-	// Update the metadata
-	bc.metadata[locationID][chunkID] = append(bc.metadata[locationID][chunkID], meta)
-	bc.cacheSize += bc.fixedChunkSize
-
-	// Add to LRU queue
-	bc.addLRU(locationID, chunkID, timestamp)
-
-	return nil
-}
-
-// Read a specific chunk from the binary cashFile
+// Read a specific logical chunk from the binary cashFile
 func (bc *BinaryCache) readChunk(locationID int64, chunkID int64) ([]byte, error) {
 	bc.chunkLock.Lock()
 	defer bc.chunkLock.Unlock()
@@ -230,14 +228,15 @@ func (bc *BinaryCache) readChunk(locationID int64, chunkID int64) ([]byte, error
 		return nil, fmt.Errorf("location ID %d not found", locationID)
 	}
 
-	chunkMetadata, exists := locationMetadata[chunkID]
+	// Retrieve all parts' metadata for the logical chunk
+	chunkMetas, exists := locationMetadata[chunkID]
 	if !exists {
 		return nil, fmt.Errorf("chunk %d not found for location ID %d", chunkID, locationID)
 	}
 
-	// Combine all parts
+	// Combine all parts in order
 	var chunk []byte
-	for _, meta := range chunkMetadata {
+	for _, meta := range chunkMetas {
 		part, err := bc.readChunkPart(meta)
 		if err != nil {
 			return nil, err
@@ -245,27 +244,22 @@ func (bc *BinaryCache) readChunk(locationID int64, chunkID int64) ([]byte, error
 		chunk = append(chunk, part...)
 	}
 
-	// Update the timestamp for LRU
+	// Update the timestamp for LRU for this logical chunk
 	timestamp := time.Now().Unix()
-	for _, meta := range chunkMetadata {
-		meta.SetTimestamp(time.Now())
-	}
-
-	// Update the LRU queue
 	bc.updateLRU(locationID, chunkID, timestamp)
 
 	return chunk, nil
 }
 
-// Helper method to read a part of the chunk
+// Helper method to read a single part of a chunk
 func (bc *BinaryCache) readChunkPart(meta chunkMetadata) ([]byte, error) {
-	// Seek to the chunk's offset
+	// Seek to the part's offset
 	_, err := bc.cashFile.Seek(meta.Offset, os.SEEK_SET)
 	if err != nil {
 		return nil, err
 	}
 
-	// Read the chunk's data
+	// Read the part's data (padded size)
 	paddedPart := make([]byte, bc.fixedChunkSize)
 	_, err = bc.cashFile.Read(paddedPart)
 	if err != nil {
@@ -276,7 +270,7 @@ func (bc *BinaryCache) readChunkPart(meta chunkMetadata) ([]byte, error) {
 	return paddedPart[:meta.Size], nil
 }
 
-// Add a chunk to the LRU queue
+// Add a logical chunk to the LRU queue
 func (bc *BinaryCache) addLRU(locationID int64, chunkID int64, timestamp int64) {
 	item := &LRUItem{
 		locationID: locationID,
@@ -286,35 +280,42 @@ func (bc *BinaryCache) addLRU(locationID int64, chunkID int64, timestamp int64) 
 	heap.Push(bc.lruQueue, item)
 }
 
-// Update a chunk's position in the LRU queue
+// Update a logical chunk's position in the LRU queue
 func (bc *BinaryCache) updateLRU(locationID int64, chunkID int64, timestamp int64) {
+	// Find the item in the heap and update its timestamp, then fix the heap.
+	// This approach might be slow if the LRU queue is very large.
 	for _, item := range *bc.lruQueue {
 		if item.locationID == locationID && item.chunkID == chunkID {
 			bc.lruQueue.update(item, timestamp)
 			return
 		}
 	}
+	// If item not found (e.g., if it was evicted and then re-read), add it again
+	bc.addLRU(locationID, chunkID, timestamp)
 }
 
-// Evict chunks until the cache size is within the limit
+// Evict logical chunks until the cache size is within the limit
 func (bc *BinaryCache) evictIfNeeded() {
-	for bc.cacheSize >= bc.maxCacheSize && bc.lruQueue.Len() > 0 { // Changed from '>' to '>='
-
-		// Evict the least recently used chunk
+	for bc.cacheSize >= bc.maxCacheSize && bc.lruQueue.Len() > 0 {
+		// Evict the least recently used logical chunk
 		item := heap.Pop(bc.lruQueue).(*LRUItem)
-		metas := bc.metadata[item.locationID][item.chunkID]
-		for _, meta := range metas {
-			bc.evictionList = append(bc.evictionList, &meta) // Add to the list of evicted chunks
-			bc.cacheSize -= bc.fixedChunkSize
-		}
-		delete(bc.metadata[item.locationID], item.chunkID)
-		if len(bc.metadata[item.locationID]) == 0 {
-			delete(bc.metadata, item.locationID)
+
+		// Get all metadata parts for this logical chunk
+		if metas, exists := bc.metadata[item.locationID][item.chunkID]; exists {
+			for _, meta := range metas {
+				bc.evictionList = append(bc.evictionList, &meta) // Add each part's metadata to the eviction list
+				bc.cacheSize -= bc.fixedChunkSize                // Decrement cache size by the fixed size of each part
+			}
+			delete(bc.metadata[item.locationID], item.chunkID) // Remove the logical chunk entry from metadata map
+			if len(bc.metadata[item.locationID]) == 0 {
+				delete(bc.metadata, item.locationID) // Remove location entry if no chunks left
+			}
 		}
 	}
 }
 
-// Save metadata to the metadata cashFile
+// Save metadata to the metadata file
+// This format now stores logical chunks, each with their part count and then parts' metadata.
 func (bc *BinaryCache) saveMetadata() error {
 	bc.metadataLock.Lock()
 	defer bc.metadataLock.Unlock()
@@ -324,34 +325,42 @@ func (bc *BinaryCache) saveMetadata() error {
 		return err
 	}
 
-	// Clear the metadata cashFile before saving new data
+	// Clear the metadata file before saving new data
 	err = bc.metadataFile.Truncate(0)
 	if err != nil {
 		return err
 	}
 
-	totalChunks := int64(0)
+	// Count total logical chunks
+	totalLogicalChunks := int64(0)
 	for _, locationChunks := range bc.metadata {
-		totalChunks += int64(len(locationChunks))
+		totalLogicalChunks += int64(len(locationChunks))
 	}
 
-	err = binary.Write(bc.metadataFile, binary.LittleEndian, totalChunks)
+	err = binary.Write(bc.metadataFile, binary.LittleEndian, totalLogicalChunks)
 	if err != nil {
 		return err
 	}
 
 	for locationID, locationChunks := range bc.metadata {
 		for chunkID, metas := range locationChunks {
+			// Write logical chunk header: locationID, chunkID, number of parts
+			err := binary.Write(bc.metadataFile, binary.LittleEndian, locationID)
+			if err != nil {
+				return err
+			}
+			err = binary.Write(bc.metadataFile, binary.LittleEndian, chunkID)
+			if err != nil {
+				return err
+			}
+			err = binary.Write(bc.metadataFile, binary.LittleEndian, int64(len(metas))) // Number of parts for this logical chunk
+			if err != nil {
+				return err
+			}
+
+			// Write each part's metadata
 			for _, meta := range metas {
-				err := binary.Write(bc.metadataFile, binary.LittleEndian, locationID)
-				if err != nil {
-					return err
-				}
-				err = binary.Write(bc.metadataFile, binary.LittleEndian, chunkID)
-				if err != nil {
-					return err
-				}
-				err = binary.Write(bc.metadataFile, binary.LittleEndian, meta.LocationID)
+				err := binary.Write(bc.metadataFile, binary.LittleEndian, meta.LocationID)
 				if err != nil {
 					return err
 				}
@@ -378,19 +387,18 @@ func (bc *BinaryCache) saveMetadata() error {
 	return bc.metadataFile.Sync()
 }
 
-// Load metadata from the metadata cashFile
+// Load metadata from the metadata file
 func (bc *BinaryCache) loadMetadata() error {
 	bc.metadataLock.Lock()
 	defer bc.metadataLock.Unlock()
 
-	// Get the metadata cashFile size
 	fileInfo, err := bc.metadataFile.Stat()
 	if err != nil {
 		return err
 	}
 	fileSize := fileInfo.Size()
 
-	// Check if the metadata cashFile is empty or corrupted
+	// If file is empty or likely corrupted (e.g., cannot read initial chunk count), reinitialize.
 	if fileSize == 0 {
 		return bc.initializeFile()
 	}
@@ -400,85 +408,74 @@ func (bc *BinaryCache) loadMetadata() error {
 		return err
 	}
 
-	// Read number of chunks
-	var numChunks int64
-	err = binary.Read(bc.metadataFile, binary.LittleEndian, &numChunks)
+	var totalLogicalChunks int64
+	err = binary.Read(bc.metadataFile, binary.LittleEndian, &totalLogicalChunks)
 	if err != nil {
+		// If reading the initial count fails, assume corrupted and reinitialize.
 		return bc.initializeFile()
 	}
 
-	for i := int64(0); i < numChunks; i++ {
+	// Reset in-memory metadata before loading
+	bc.metadata = make(map[int64]map[int64][]chunkMetadata)
+	bc.cacheSize = 0
+
+	for i := int64(0); i < totalLogicalChunks; i++ {
 		var locationID int64
 		var chunkID int64
-		var meta chunkMetadata
+		var partCount int64
 
-		err = binary.Read(bc.metadataFile, binary.LittleEndian, &locationID)
-		if err != nil {
-			if err == io.EOF {
-				break // Gracefully handle unexpected EOF
-			}
-			return err
+		// Read logical chunk header
+		if err := binary.Read(bc.metadataFile, binary.LittleEndian, &locationID); err != nil {
+			return fmt.Errorf("failed to read locationID for logical chunk %d: %w", i, err)
 		}
-		err = binary.Read(bc.metadataFile, binary.LittleEndian, &chunkID)
-		if err != nil {
-			if err == io.EOF {
-				break // Gracefully handle unexpected EOF
-			}
-			return err
+		if err := binary.Read(bc.metadataFile, binary.LittleEndian, &chunkID); err != nil {
+			return fmt.Errorf("failed to read chunkID for logical chunk %d: %w", i, err)
 		}
-		err = binary.Read(bc.metadataFile, binary.LittleEndian, &meta.LocationID)
-		if err != nil {
-			if err == io.EOF {
-				break // Gracefully handle unexpected EOF
-			}
-			return err
+		if err := binary.Read(bc.metadataFile, binary.LittleEndian, &partCount); err != nil {
+			return fmt.Errorf("failed to read partCount for logical chunk %d (loc %d, chunk %d): %w", i, locationID, chunkID, err)
 		}
-		err = binary.Read(bc.metadataFile, binary.LittleEndian, &meta.ChunkIndex)
-		if err != nil {
-			if err == io.EOF {
-				break // Gracefully handle unexpected EOF
+
+		metasForLogicalChunk := make([]chunkMetadata, partCount)
+		var chunkTimestamp int64 // Will store the timestamp for the LRU item for this logical chunk
+
+		for p := int64(0); p < partCount; p++ {
+			var meta chunkMetadata
+			if err := binary.Read(bc.metadataFile, binary.LittleEndian, &meta.LocationID); err != nil {
+				return fmt.Errorf("failed to read part metadata (locID) for part %d of logical chunk %d: %w", p, i, err)
 			}
-			return err
-		}
-		err = binary.Read(bc.metadataFile, binary.LittleEndian, &meta.Offset)
-		if err != nil {
-			if err == io.EOF {
-				break // Gracefully handle unexpected EOF
+			if err := binary.Read(bc.metadataFile, binary.LittleEndian, &meta.ChunkIndex); err != nil {
+				return fmt.Errorf("failed to read part metadata (chunkIndex) for part %d of logical chunk %d: %w", p, i, err)
 			}
-			return err
-		}
-		err = binary.Read(bc.metadataFile, binary.LittleEndian, &meta.Size)
-		if err != nil {
-			if err == io.EOF {
-				break // Gracefully handle unexpected EOF
+			if err := binary.Read(bc.metadataFile, binary.LittleEndian, &meta.Offset); err != nil {
+				return fmt.Errorf("failed to read part metadata (offset) for part %d of logical chunk %d: %w", p, i, err)
 			}
-			return err
-		}
-		err = binary.Read(bc.metadataFile, binary.LittleEndian, &meta.Timestamp)
-		if err != nil {
-			if err == io.EOF {
-				break // Gracefully handle unexpected EOF
+			if err := binary.Read(bc.metadataFile, binary.LittleEndian, &meta.Size); err != nil {
+				return fmt.Errorf("failed to read part metadata (size) for part %d of logical chunk %d: %w", p, i, err)
 			}
-			return err
+			if err := binary.Read(bc.metadataFile, binary.LittleEndian, &meta.Timestamp); err != nil {
+				return fmt.Errorf("failed to read part metadata (timestamp) for part %d of logical chunk %d: %w", p, i, err)
+			}
+
+			if p == 0 { // Use timestamp of the first part for the logical chunk's LRU
+				chunkTimestamp = meta.Timestamp
+			}
+			metasForLogicalChunk[p] = meta
+			bc.cacheSize += bc.fixedChunkSize
 		}
 
 		if _, exists := bc.metadata[locationID]; !exists {
 			bc.metadata[locationID] = make(map[int64][]chunkMetadata)
 		}
-
-		bc.metadata[locationID][chunkID] = append(bc.metadata[locationID][chunkID], meta)
-		bc.cacheSize += bc.fixedChunkSize
-
-		// Add the chunk to the LRU queue
-		bc.addLRU(locationID, chunkID, meta.Timestamp)
+		bc.metadata[locationID][chunkID] = metasForLogicalChunk
+		bc.addLRU(locationID, chunkID, chunkTimestamp) // Add LRU item for the logical chunk
 	}
 
 	return nil
 }
 
-// Initialize the metadata cashFile
+// Initialize the metadata file
 func (bc *BinaryCache) initializeFile() error {
-	// Truncate the metadata cashFile to clear existing data
+	// Truncate the metadata file to clear existing data
 	err := bc.metadataFile.Truncate(0)
 	if err != nil {
 		return err
@@ -489,9 +486,9 @@ func (bc *BinaryCache) initializeFile() error {
 		return err
 	}
 
-	// Initialize with zero chunks
-	var numChunks int64 = 0
-	err = binary.Write(bc.metadataFile, binary.LittleEndian, numChunks)
+	// Initialize with zero logical chunks
+	var numLogicalChunks int64 = 0
+	err = binary.Write(bc.metadataFile, binary.LittleEndian, numLogicalChunks)
 	if err != nil {
 		return err
 	}
@@ -499,6 +496,8 @@ func (bc *BinaryCache) initializeFile() error {
 	// Reset in-memory metadata
 	bc.metadata = make(map[int64]map[int64][]chunkMetadata)
 	bc.cacheSize = 0
+	bc.lruQueue = &PriorityQueue{} // Reset LRU queue too
+	heap.Init(bc.lruQueue)         // Initialize the new empty heap
 
 	// Ensure changes are written to disk
 	err = bc.metadataFile.Sync()

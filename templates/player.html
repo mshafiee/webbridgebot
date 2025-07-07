@@ -106,17 +106,16 @@
         const reloadButton = document.getElementById('reloadButton');
         const statusText = document.getElementById('status');
         let ws;
-        let latestMedia = { url: null, mimeType: null };
-        let attemptReconnect = true;
+        let latestMediaData = null; // Store the full data object
 
         const setupWebSocket = () => {
             const wsAddress = 'ws://' + window.location.host + '/ws/{{.ChatID}}';
             ws = new WebSocket(wsAddress);
 
-            ws.addEventListener('message', (event) => handleWebSocketMessage(event));
-            ws.addEventListener('error', (error) => handleWebSocketError(error));
-            ws.addEventListener('open', () => handleWebSocketOpen());
-            ws.addEventListener('close', () => handleWebSocketClose());
+            ws.addEventListener('message', handleWebSocketMessage);
+            ws.addEventListener('error', handleWebSocketError);
+            ws.addEventListener('open', handleWebSocketOpen);
+            ws.addEventListener('close', handleWebSocketClose);
         };
 
         const handleWebSocketOpen = () => {
@@ -126,77 +125,110 @@
         const handleWebSocketMessage = (event) => {
             const data = JSON.parse(event.data);
             console.log('Message from server: ', data);
-            latestMedia = { url: data.url, mimeType: data.mimeType };
-            playMedia(data.url, data.mimeType);
+            latestMediaData = data; // Store the latest media data
+            playMedia(data);
         };
 
         const handleWebSocketClose = () => {
             console.log('WebSocket closed. Attempting to reconnect...');
-            if (attemptReconnect) setTimeout(setupWebSocket, 3000);
+            // Only attempt reconnect if not explicitly closed by another action
+            setTimeout(setupWebSocket, 3000);
         };
 
         const handleWebSocketError = (error) => {
             console.error('WebSocket encountered an error: ', error.message);
-            ws.close(); // Ensure the WebSocket is closed properly before attempting to reconnect
+            // It's usually good to close explicitly on error if not handled otherwise
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.close();
+            }
         };
 
-        const updateUIForMedia = (playerToShow, playersToHide, mimeType) => {
+        const updateUIForMedia = (playerToShow, playersToHide, data) => {
+            // Pause and hide all other players
             playersToHide.forEach(player => {
                 if (player.pause) player.pause();
                 player.style.display = 'none';
             });
-            playerToShow.style.display = 'block';
+            imageViewer.style.display = 'none'; // Ensure image viewer is hidden if not active
 
-            // Adjust status text based on media type
-            if (mimeType.startsWith('video')) {
+            // Set the display style for the active player
+            if (playerToShow) {
+                 playerToShow.style.display = 'block';
+            }
+
+            // Clear image src when hiding
+            imageViewer.src = '';
+
+            // Update button visibility and onclick handlers
+            reloadButton.style.display = 'inline-block'; // Reload button always visible for media
+            fullscreenButton.style.display = 'none'; // Default to hidden
+
+            if (data.mimeType.startsWith('video')) {
                 statusText.textContent = 'Playing Video...';
                 fullscreenButton.style.display = 'inline-block';
-                reloadButton.style.display = 'inline-block';
-                fullscreenButton.onclick = () => enterFullScreen(playerToShow);
-                reloadButton.onclick = () => playMedia(latestMedia.url, latestMedia.mimeType);
-            } else if (mimeType.startsWith('audio')) {
+                fullscreenButton.onclick = () => enterFullScreen(videoPlayer);
+            } else if (data.mimeType.startsWith('audio')) {
                 statusText.textContent = 'Playing Audio...';
-                fullscreenButton.style.display = 'none';
-                reloadButton.style.display = 'inline-block'; /* Ensure reload button is shown for audio */
-            } else if (mimeType.startsWith('image')) {
+                // Fullscreen button hidden for audio
+            } else if (data.mimeType.startsWith('image')) {
                 statusText.textContent = 'Viewing Image... Click to view full screen.';
-                fullscreenButton.style.display = 'none';
-                reloadButton.style.display = 'none';
+                reloadButton.style.display = 'none'; // No reload for images needed usually
+                fullscreenButton.style.display = 'inline-block';
+                fullscreenButton.onclick = () => enterFullScreen(imageViewer);
             } else {
                 statusText.textContent = 'Unsupported media type.';
-                fullscreenButton.style.display = 'none';
                 reloadButton.style.display = 'none';
+                fullscreenButton.style.display = 'none';
             }
+            reloadButton.onclick = () => playMedia(data); // Always set reload to the current media
         };
 
-        const playMedia = (url, mimeType) => {
-            if (mimeType.startsWith('video')) {
-                updateUIForMedia(videoPlayer, [audioPlayer, imageViewer], mimeType);
-                loadAndPlayMedia(videoPlayer, url);
-            } else if (mimeType.startsWith('audio')) {
-                updateUIForMedia(audioPlayer, [videoPlayer, imageViewer], mimeType);
-                loadAndPlayMedia(audioPlayer, url);
-                initAudioMotion(audioPlayer);
-            } else if (mimeType.startsWith('image')) {
-                updateUIForMedia(imageViewer, [videoPlayer, audioPlayer], mimeType);
-                loadImage(imageViewer, url);
+        const playMedia = (data) => {
+            // Hide all media elements first
+            videoPlayer.style.display = 'none';
+            audioPlayer.style.display = 'none';
+            imageViewer.style.display = 'none';
+
+            // Clear any previous media sources
+            videoPlayer.src = '';
+            audioPlayer.src = '';
+            imageViewer.src = '';
+
+            // Clean up or re-initialize AudioMotionAnalyzer if it was active
+            if (window.audioMotion && window.audioMotion.analyzer) {
+                window.audioMotion.analyzer.disconnect();
+                window.audioMotion.analyzer = null; // Clear reference
+                document.getElementById("audioMotionContainer").innerHTML = ''; // Clear canvas
+            }
+
+            const uniqueUrl = data.url + '?nocache=' + new Date().getTime(); // Add nocache for fresh load
+
+            if (data.mimeType.startsWith('video')) {
+                updateUIForMedia(videoPlayer, [audioPlayer, imageViewer], data);
+                loadAndPlayMedia(videoPlayer, uniqueUrl);
+            } else if (data.mimeType.startsWith('audio')) {
+                updateUIForMedia(audioPlayer, [videoPlayer, imageViewer], data);
+                loadAndPlayMedia(audioPlayer, uniqueUrl);
+                initAudioMotion(audioPlayer); // Re-initialize for new audio
+            } else if (data.mimeType.startsWith('image')) {
+                updateUIForMedia(imageViewer, [videoPlayer, audioPlayer], data);
+                loadImage(imageViewer, uniqueUrl);
             } else {
-                console.log('Unsupported media type: ', mimeType);
+                console.log('Unsupported media type: ', data.mimeType);
+                statusText.textContent = 'Unsupported media type.';
+                updateUIForMedia(null, [videoPlayer, audioPlayer, imageViewer], data); // Hide all
             }
         };
 
         const loadAndPlayMedia = (player, url) => {
-            const uniqueUrl = url + '?nocache=' + new Date().getTime();
-            player.src = uniqueUrl;
+            player.src = url;
             player.load();
 
             const attemptPlay = () => {
                 player.play().then(() => {
-                    // Clear the status after successful playback
-                    statusText.textContent = '';
+                    statusText.textContent = ''; // Clear status after successful playback
                 }).catch(error => {
                     if (error.name === 'NotAllowedError') {
-                        // User gesture is required to play the media
                         statusText.textContent = 'Please click on the page to play media.';
                         document.body.addEventListener('click', attemptPlay, { once: true });
                     } else {
@@ -212,6 +244,9 @@
         const initAudioMotion = (audioElement) => {
             console.log('Initializing AudioMotionAnalyzer');
             try {
+                // Ensure container is empty before creating new analyzer
+                document.getElementById("audioMotionContainer").innerHTML = '';
+
                 const audioMotion = new AudioMotionAnalyzer(document.getElementById("audioMotionContainer"), {
                     source: audioElement,
                     height: window.innerHeight,
@@ -229,38 +264,42 @@
                     channelLayout: "dual-vertical",
                     smoothing: 0.7
                 });
+                window.audioMotion = { analyzer: audioMotion }; // Store reference globally for cleanup
 
                 window.addEventListener('resize', () => {
-                    audioMotion.setCanvasSize(window.innerWidth, window.innerHeight);
+                    if (window.audioMotion && window.audioMotion.analyzer) {
+                        window.audioMotion.analyzer.setCanvasSize(window.innerWidth, window.innerHeight);
+                    }
                 });
 
-                const attemptPlay = () => {
+                const attemptPlayAudioMotion = () => {
                     audioElement.play().then(() => {
-                        // Clear the status after successful playback
                         statusText.textContent = '';
                     }).catch(error => {
                         if (error.name === 'NotAllowedError') {
-                            // User gesture is required to play the media
                             statusText.textContent = 'Please click on the page to start audio visualization.';
-                            document.body.addEventListener('click', attemptPlay, { once: true });
+                            document.body.addEventListener('click', attemptPlayAudioMotion, { once: true });
                         } else {
                             console.error('Error with AudioMotion playback: ', error);
                             statusText.textContent = 'Error with audio playback. Please try reloading.';
                         }
                     });
                 };
-
-                attemptPlay();
-
+                attemptPlayAudioMotion();
             } catch (error) {
                 console.error('AudioMotionAnalyzer error: ', error);
+                statusText.textContent = 'Error initializing audio visualization.';
             }
         };
 
-
         const loadImage = (imageElement, url) => {
-            const uniqueUrl = url + '?nocache=' + new Date().getTime();
-            imageElement.src = uniqueUrl;
+            imageElement.src = url;
+            imageElement.onload = () => {
+                statusText.textContent = ''; // Clear status after image loads
+            };
+            imageElement.onerror = () => {
+                statusText.textContent = 'Error loading image.';
+            };
         };
 
         const enterFullScreen = (element) => {
@@ -279,6 +318,14 @@
             enterFullScreen(imageViewer);
         });
 
+        // Event listeners for buttons
+        reloadButton.addEventListener('click', () => {
+            if (latestMediaData) {
+                playMedia(latestMediaData); // Re-trigger playMedia with the last known media data
+            }
+        });
+
+        // Initial setup
         setupWebSocket();
     });
 
