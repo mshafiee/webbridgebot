@@ -360,29 +360,30 @@ func (b *TelegramBot) handleAnyUpdate(ctx *ext.Context, u *ext.Update) error {
 }
 
 func (b *TelegramBot) handleMediaMessages(ctx *ext.Context, u *ext.Update) error {
-	chatID := u.EffectiveChat().GetID()
-	user := u.EffectiveUser()
+	chatID := u.EffectiveChat().GetID() // This will correctly be the forwarding user's ID in a private chat
+	user := u.EffectiveUser()           // This might be the original sender's ID for forwarded messages
+
 	b.logger.Printf("Processing media message from user: %s (ID: %d) in chat: %d", user.FirstName, user.ID, chatID)
 
 	if !b.isUserChat(ctx, chatID) {
 		return dispatcher.EndGroups // Only process media from private chats
 	}
 
-	existingUser, err := b.userRepository.GetUserInfo(user.ID)
+	existingUser, err := b.userRepository.GetUserInfo(chatID)
 	if err != nil {
 		if err == sql.ErrNoRows { // User not in DB
-			b.logger.Printf("User %d not in DB for media message, sending unauthorized message.", user.ID)
+			b.logger.Printf("User %d not in DB for media message, sending unauthorized message.", chatID)
 			authorizationMsg := "You are not authorized to use this bot yet. Please ask one of the administrators to authorize you and wait until you receive a confirmation."
 			return b.sendReply(ctx, u, authorizationMsg)
 		}
-		b.logger.Printf("Failed to retrieve user info from DB for media message for user %d: %v", user.ID, err)
+		b.logger.Printf("Failed to retrieve user info from DB for media message for user %d: %v", chatID, err)
 		return fmt.Errorf("failed to retrieve user info for media handling: %w", err)
 	}
 
-	b.logger.Printf("User %d retrieved for media message. isAuthorized=%t, isAdmin=%t", user.ID, existingUser.IsAuthorized, existingUser.IsAdmin) // Added DEBUG log
+	b.logger.Printf("User %d retrieved for media message. isAuthorized=%t, isAdmin=%t", chatID, existingUser.IsAuthorized, existingUser.IsAdmin)
 
 	if !existingUser.IsAuthorized {
-		b.logger.Printf("DEBUG: User %d is NOT authorized (isAuthorized=%t). Sending unauthorized message for media.", user.ID, existingUser.IsAuthorized) // Added DEBUG log
+		b.logger.Printf("DEBUG: User %d is NOT authorized (isAuthorized=%t). Sending unauthorized message for media.", chatID, existingUser.IsAuthorized)
 		authorizationMsg := "You are not authorized to use this bot yet. Please ask one of the administrators to authorize you and wait until you receive a confirmation."
 		return b.sendReply(ctx, u, authorizationMsg)
 	}
