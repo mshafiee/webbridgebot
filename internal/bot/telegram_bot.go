@@ -33,13 +33,14 @@ import (
 const (
 	callbackResendToPlayer = "cb_ResendToPlayer"
 	// New control action callbacks
-	callbackPlay           = "cb_Play" // Will be used for Play/Pause toggle
-	callbackRestart        = "cb_Restart"
-	callbackForward10      = "cb_Fwd10"
-	callbackBackward10     = "cb_Bwd10"
-	callbackListUsers      = "cb_listusers"        // For pagination of /listusers command
-	callbackUserAuthAction = "cb_user_auth_action" // For user authorization/decline buttons
-	tmplPath               = "templates/player.html"
+	callbackPlay             = "cb_Play" // Will be used for Play/Pause toggle
+	callbackRestart          = "cb_Restart"
+	callbackForward10        = "cb_Fwd10"
+	callbackBackward10       = "cb_Bwd10"
+	callbackToggleFullscreen = "cb_ToggleFullscreen" // NEW
+	callbackListUsers        = "cb_listusers"        // For pagination of /listusers command
+	callbackUserAuthAction   = "cb_user_auth_action" // For user authorization/decline buttons
+	tmplPath                 = "templates/player.html"
 )
 
 // TelegramBot represents the main bot structure.
@@ -450,6 +451,11 @@ func (b *TelegramBot) sendMediaToUser(ctx *ext.Context, u *ext.Update, fileURL s
 				},
 				{
 					Buttons: []tg.KeyboardButtonClass{
+						&tg.KeyboardButtonCallback{Text: "Toggle Fullscreen", Data: []byte(callbackToggleFullscreen)},
+					},
+				},
+				{
+					Buttons: []tg.KeyboardButtonClass{
 						&tg.KeyboardButtonCallback{Text: "▶️/⏸️", Data: []byte(callbackPlay)},
 						&tg.KeyboardButtonCallback{Text: "🔄", Data: []byte(callbackRestart)},
 						&tg.KeyboardButtonCallback{Text: "⏪ 10s", Data: []byte(callbackBackward10)},
@@ -703,6 +709,19 @@ func (b *TelegramBot) handleCallbackQuery(ctx *ext.Context, u *ext.Update) error
 			_, _ = ctx.AnswerCallback(&tg.MessagesSetBotCallbackAnswerRequest{
 				QueryID: u.CallbackQuery.QueryID,
 				Message: "Rewound 10 seconds.",
+			})
+		} else {
+			_, _ = ctx.AnswerCallback(&tg.MessagesSetBotCallbackAnswerRequest{
+				QueryID: u.CallbackQuery.QueryID,
+				Message: "Web player not connected.",
+			})
+		}
+	case callbackToggleFullscreen: // NEW: Handle the toggle fullscreen callback
+		if _, ok := wsClients[chatID]; ok {
+			b.publishControlCommandToWebSocket(chatID, "toggleFullscreen", nil) // Send command to WebSocket
+			_, _ = ctx.AnswerCallback(&tg.MessagesSetBotCallbackAnswerRequest{
+				QueryID: u.CallbackQuery.QueryID,
+				Message: "Fullscreen toggled.",
 			})
 		} else {
 			_, _ = ctx.AnswerCallback(&tg.MessagesSetBotCallbackAnswerRequest{

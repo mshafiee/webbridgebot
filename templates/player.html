@@ -4,387 +4,543 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WebBridgeBot Media Player - {{.ChatID}}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&display=swap" rel="stylesheet">
     <style>
+        /* CSS Variables */
+        :root {
+            --primary-color: #00aaff;
+            --secondary-color: #007bff;
+            --secondary-hover-color: #0056b3;
+            --background-color: #222;
+            --text-color: #fff;
+            --subtle-text-color: #aaa;
+            --error-color: #ff6347;
+            --info-color: #ffd700;
+            --shadow-dark: rgba(0, 0, 0, 0.7);
+            --shadow-medium: rgba(0, 0, 0, 0.4);
+            --border-radius-lg: 12px;
+            --border-radius-md: 8px;
+            --spacing-lg: 2rem; /* 32px */
+            --spacing-md: 1.5rem; /* 24px */
+            --spacing-sm: 1rem; /* 16px */
+            --font-size-h1: 2.8rem;
+            --font-size-status: 1.5rem;
+            --font-size-button: 1.2rem;
+        }
+
+        /* Base Styles */
         body {
             margin: 0;
-            padding: 20px;
+            padding: var(--spacing-lg);
             box-sizing: border-box;
             display: flex;
             flex-direction: column;
-            align-items: center;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #222;
-            color: #fff;
-            overflow: hidden; /* Prevent scrolling */
-            position: relative; /* Establish stacking context */
-            height: 100vh;
+            min-height: 100vh; /* Ensure it takes at least full viewport height */
+            font-family: 'Roboto', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--background-color);
+            color: var(--text-color);
+            position: relative;
         }
+
+        /* Global Typography & Elements */
         h1 {
-            color: #00aaff;
-            font-size: 2.5rem;
+            color: var(--primary-color);
+            font-size: var(--font-size-h1);
             font-weight: 700;
-            margin: 20px 0;
+            margin: var(--spacing-lg) 0 var(--spacing-sm) 0; /* Adjusted margin-bottom */
             text-align: center;
-            z-index: 2; /* Position above the background */
-            position: relative;
-            text-shadow: 3px 3px 8px rgba(0, 0, 0, 0.7); /* Add shadow to the title */
-        }
-        #videoPlayer, #audioPlayer, #imageViewer {
-            max-width: 90%;
-            max-height: 60vh;
-            display: none;
-            border-radius: 12px;
-            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
-            z-index: 2; /* Position above the background */
+            text-shadow: 3px 3px 8px var(--shadow-dark);
+            z-index: 2;
             position: relative;
         }
+
+        #status {
+            font-size: var(--font-size-status);
+            margin: 0 0 var(--spacing-md) 0; /* Adjusted margins */
+            text-align: center;
+            color: var(--subtle-text-color); /* Default color */
+            text-shadow: 2px 2px 6px var(--shadow-dark);
+            z-index: 2;
+            position: relative;
+        }
+
+        /* Main Content Area - This will be our flexible "portion" */
+        main {
+            flex-grow: 1; /* This makes 'main' take up all available vertical space */
+            display: flex; /* Make main a flex container to center its children */
+            justify-content: center; /* Center media horizontally */
+            align-items: center; /* Center media vertically */
+            width: 100%; /* Ensure it spans the full width available */
+            max-width: 1400px; /* Optional: constrain max width for very large screens */
+            margin: var(--spacing-md) auto; /* Add vertical margin, center horizontally */
+            overflow: hidden; /* Hide anything that might overflow this main area */
+        }
+
+        /* Media Player Elements - Now fit within the flexible 'main' area */
+        #videoPlayer,
+        #audioPlayer,
+        #imageViewer {
+            max-width: 100%; /* Max width of its parent 'main' */
+            max-height: 100%; /* Max height of its parent 'main' */
+            width: auto; /* Allow natural aspect ratio to dictate actual width */
+            height: auto; /* Allow natural aspect ratio to dictate actual height */
+            display: none; /* Hidden by default */
+            border-radius: var(--border-radius-lg);
+            box-shadow: 0 6px 12px var(--shadow-medium);
+            z-index: 2;
+            position: relative;
+            object-fit: contain; /* Ensure media scales without cropping */
+        }
+
+        /* Button Container */
         .button-container {
             display: flex;
+            flex-wrap: wrap;
             justify-content: center;
             width: 100%;
-            margin: 20px 0;
-            gap: 15px;
-            z-index: 3; /* Increased z-index to ensure it's above other elements */
+            margin: var(--spacing-md) 0 var(--spacing-lg) 0;
+            gap: var(--spacing-sm);
+            z-index: 3;
             position: relative;
         }
+
         .button {
-            padding: 15px 30px;
-            font-size: 1.2rem;
+            padding: 0.8rem 1.5rem;
+            font-size: var(--font-size-button);
             font-weight: 600;
-            color: #fff;
-            background-color: #007bff;
+            color: var(--text-color);
+            background-color: var(--secondary-color);
             border: none;
-            border-radius: 8px;
+            border-radius: var(--border-radius-md);
             cursor: pointer;
-            transition: background-color 0.3s;
-            z-index: 3; /* Increased z-index to ensure it's above other elements */
-            position: relative;
+            transition: background-color 0.3s ease, transform 0.1s ease;
+            white-space: nowrap;
         }
+
         .button:hover {
-            background-color: #0056b3;
+            background-color: var(--secondary-hover-color);
+            transform: translateY(-2px);
         }
-        #status {
-            font-size: 1.5rem;
-            margin: 15px 0;
-            text-align: center;
-            color: #aaa;
-            z-index: 3; /* Increased z-index to ensure it's above other elements */
-            position: relative;
-            text-shadow: 2px 2px 6px rgba(0, 0, 0, 0.6); /* Add shadow to the status text */
+
+        .button:active {
+            transform: translateY(0);
         }
+
+        /* Audio Motion Visualizer */
         #audioMotionContainer {
             position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            z-index: 1; /* Ensure it is behind all other content */
-            pointer-events: none; /* Allow clicks to pass through */
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        /* Media Queries for Responsiveness */
+        @media (max-width: 768px) {
+            body {
+                padding: var(--spacing-md);
+            }
+
+            h1 {
+                font-size: 2rem;
+            }
+
+            #status {
+                font-size: 1.2rem;
+            }
+
+            .button {
+                padding: 0.6rem 1.2rem;
+                font-size: 1rem;
+            }
+
+            .button-container {
+                gap: 0.75rem;
+            }
+        }
+
+        @media (max-width: 480px) {
+            body {
+                padding: var(--spacing-sm);
+            }
+
+            h1 {
+                font-size: 1.7rem;
+                margin: var(--spacing-md) 0 var(--spacing-sm) 0;
+            }
+
+            #status {
+                font-size: 1rem;
+            }
+
+            .button {
+                padding: 0.5rem 1rem;
+                font-size: 0.9rem;
+            }
+
+            .button-container {
+                flex-direction: column;
+                align-items: center;
+                gap: 0.5rem;
+                width: 90%;
+            }
         }
     </style>
 </head>
 <body>
-<h1>WebBridgeBot</h1>
-<p id="status">Chat ID: {{.ChatID}}; Waiting for media...</p>
-<video id="videoPlayer" controls></video>
-<audio id="audioPlayer" controls></audio>
-<img id="imageViewer" />
-<div class="button-container">
-    <button id="reloadButton" class="button">Reload</button>
-    <button id="fullscreenButton" class="button">Fullscreen</button>
-</div>
+    <header>
+        <h1>WebBridgeBot</h1>
+        <p id="status">Chat ID: {{.ChatID}}; Waiting for media...</p>
+    </header>
 
-<div id="audioMotionContainer"></div> <!-- Ensure this is at the bottom for proper stacking -->
+    <main>
+        <video id="videoPlayer" controls></video>
+        <audio id="audioPlayer" controls></audio>
+        <img id="imageViewer" alt="Displayed media" />
+    </main>
 
-<script type="module">
-    import AudioMotionAnalyzer from "https://cdn.skypack.dev/audiomotion-analyzer?min";
-    document.addEventListener('DOMContentLoaded', () => {
-        const videoPlayer = document.getElementById('videoPlayer');
-        const audioPlayer = document.getElementById('audioPlayer');
-        const imageViewer = document.getElementById('imageViewer');
-        const fullscreenButton = document.getElementById('fullscreenButton');
-        const reloadButton = document.getElementById('reloadButton');
-        const statusText = document.getElementById('status');
-        let ws;
-        let latestMediaData = null; // Store the full data object
+    <div class="button-container">
+        <button id="reloadButton" class="button">Reload</button>
+        <button id="fullscreenButton" class="button">Fullscreen</button>
+    </div>
 
-        const setupWebSocket = () => {
-            const wsAddress = 'ws://' + window.location.host + '/ws/{{.ChatID}}';
-            ws = new WebSocket(wsAddress);
+    <div id="audioMotionContainer"></div> <!-- Visualizer background -->
 
-            ws.addEventListener('message', handleWebSocketMessage);
-            ws.addEventListener('error', handleWebSocketError);
-            ws.addEventListener('open', handleWebSocketOpen);
-            ws.addEventListener('close', handleWebSocketClose);
-        };
+    <script type="module">
+        import AudioMotionAnalyzer from "https://cdn.skypack.dev/audiomotion-analyzer?min";
 
-        const handleWebSocketOpen = () => {
-            console.log('WebSocket connection opened.');
-        };
-
-        const handleWebSocketMessage = (event) => {
-            const data = JSON.parse(event.data);
-            console.log('Message from server: ', data);
-            
-            // Check if the message is a control command or new media
-            if (data.command) {
-                handleControlCommand(data.command, data.value);
-            } else {
-                latestMediaData = data; // Store the latest media data
-                playMedia(data);
-            }
-        };
-
-        const handleWebSocketClose = () => {
-            console.log('WebSocket closed. Attempting to reconnect...');
-            // Only attempt reconnect if not explicitly closed by another action
-            setTimeout(setupWebSocket, 3000);
-        };
-
-        const handleWebSocketError = (error) => {
-            console.error('WebSocket encountered an error: ', error.message);
-            // It's usually good to close explicitly on error if not handled otherwise
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.close();
-            }
-        };
-
-        const updateUIForMedia = (playerToShow, playersToHide, data) => {
-            // Pause and hide all other players
-            playersToHide.forEach(player => {
-                if (player.pause) player.pause();
-                player.style.display = 'none';
-            });
-            imageViewer.style.display = 'none'; // Ensure image viewer is hidden if not active
-
-            // Set the display style for the active player
-            if (playerToShow) {
-                 playerToShow.style.display = 'block';
-            }
-
-            // Clear image src when hiding
-            imageViewer.src = '';
-
-            // Update button visibility and onclick handlers
-            reloadButton.style.display = 'inline-block'; // Reload button always visible for media
-            fullscreenButton.style.display = 'none'; // Default to hidden
-
-            if (data.mimeType.startsWith('video')) {
-                statusText.textContent = 'Playing Video...';
-                fullscreenButton.style.display = 'inline-block';
-                fullscreenButton.onclick = () => enterFullScreen(videoPlayer);
-            } else if (data.mimeType.startsWith('audio')) {
-                statusText.textContent = 'Playing Audio...';
-                // Fullscreen button hidden for audio
-            } else if (data.mimeType.startsWith('image')) {
-                statusText.textContent = 'Viewing Image... Click to view full screen.';
-                reloadButton.style.display = 'none'; // No reload for images needed usually
-                fullscreenButton.style.display = 'inline-block';
-                fullscreenButton.onclick = () => enterFullScreen(imageViewer);
-            } else {
-                statusText.textContent = 'Unsupported media type.';
-                reloadButton.style.display = 'none';
-                fullscreenButton.style.display = 'none';
-            }
-            reloadButton.onclick = () => playMedia(data); // Always set reload to the current media
-        };
-
-        const playMedia = (data) => {
-            // Hide all media elements first
-            videoPlayer.style.display = 'none';
-            audioPlayer.style.display = 'none';
-            imageViewer.style.display = 'none';
-
-            // Clear any previous media sources
-            videoPlayer.src = '';
-            audioPlayer.src = '';
-            imageViewer.src = '';
-
-            // Clean up or re-initialize AudioMotionAnalyzer if it was active
-            if (window.audioMotion && window.audioMotion.analyzer) {
-                window.audioMotion.analyzer.disconnect();
-                window.audioMotion.analyzer = null; // Clear reference
-                document.getElementById("audioMotionContainer").innerHTML = ''; // Clear canvas
-            }
-
-            const uniqueUrl = data.url + '?nocache=' + new Date().getTime(); // Add nocache for fresh load
-
-            if (data.mimeType.startsWith('video')) {
-                updateUIForMedia(videoPlayer, [audioPlayer, imageViewer], data);
-                loadAndPlayMedia(videoPlayer, uniqueUrl);
-            } else if (data.mimeType.startsWith('audio')) {
-                updateUIForMedia(audioPlayer, [videoPlayer, imageViewer], data);
-                loadAndPlayMedia(audioPlayer, uniqueUrl);
-                initAudioMotion(audioPlayer); // Re-initialize for new audio
-            } else if (data.mimeType.startsWith('image')) {
-                updateUIForMedia(imageViewer, [videoPlayer, audioPlayer], data);
-                loadImage(imageViewer, uniqueUrl);
-            } else {
-                console.log('Unsupported media type: ', data.mimeType);
-                statusText.textContent = 'Unsupported media type.';
-                updateUIForMedia(null, [videoPlayer, audioPlayer, imageViewer], data); // Hide all
-            }
-        };
-
-        const loadAndPlayMedia = (player, url) => {
-            player.src = url;
-            player.load();
-
-            const attemptPlay = () => {
-                player.play().then(() => {
-                    statusText.textContent = ''; // Clear status after successful playback
-                }).catch(error => {
-                    if (error.name === 'NotAllowedError') {
-                        statusText.textContent = 'Please click on the page to play media.';
-                        document.body.addEventListener('click', attemptPlay, { once: true });
-                    } else {
-                        console.error('Error playing media: ', error);
-                        statusText.textContent = 'Error playing media. Please try reloading.';
-                    }
-                });
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- DOM Elements ---
+            const dom = {
+                videoPlayer: document.getElementById('videoPlayer'),
+                audioPlayer: document.getElementById('audioPlayer'),
+                imageViewer: document.getElementById('imageViewer'),
+                fullscreenButton: document.getElementById('fullscreenButton'),
+                reloadButton: document.getElementById('reloadButton'),
+                statusText: document.getElementById('status'),
+                audioMotionContainer: document.getElementById('audioMotionContainer')
             };
 
-            attemptPlay();
-        };
+            // --- State Variables ---
+            let ws;
+            let latestMediaData = null; // Stores the full data object for reload
+            let audioMotionInstance = null; // Store AudioMotionAnalyzer instance
 
-        const initAudioMotion = (audioElement) => {
-            console.log('Initializing AudioMotionAnalyzer');
-            try {
-                // Ensure container is empty before creating new analyzer
-                document.getElementById("audioMotionContainer").innerHTML = '';
+            // --- WebSocket Management ---
+            const setupWebSocket = () => {
+                const wsAddress = `ws://${window.location.host}/ws/{{.ChatID}}`; // Using template literal
+                ws = new WebSocket(wsAddress);
 
-                const audioMotion = new AudioMotionAnalyzer(document.getElementById("audioMotionContainer"), {
-                    source: audioElement,
-                    height: window.innerHeight,
-                    width: window.innerWidth,
-                    ansiBands: false,
-                    showScaleX: false,
-                    bgAlpha: 0.5,
-                    overlay: true,
-                    mode: 1,
-                    frequencyScale: "log",
-                    radial: true,
-                    showPeaks: false,
-                    showBgColor: true,
-                    radialInvert: true,
-                    channelLayout: "dual-vertical",
-                    smoothing: 0.7
-                });
-                window.audioMotion = { analyzer: audioMotion }; // Store reference globally for cleanup
+                ws.addEventListener('message', handleWebSocketMessage);
+                ws.addEventListener('error', handleWebSocketError);
+                ws.addEventListener('open', () => updateStatus('WebSocket connection opened. Waiting for media...', 'info'));
+                ws.addEventListener('close', handleWebSocketClose);
+            };
 
-                window.addEventListener('resize', () => {
-                    if (window.audioMotion && window.audioMotion.analyzer) {
-                        window.audioMotion.analyzer.setCanvasSize(window.innerWidth, window.innerHeight);
+            const handleWebSocketMessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    console.log('Message from server: ', data);
+
+                    if (data.command) {
+                        handleControlCommand(data.command, data.value);
+                    } else {
+                        latestMediaData = data; // Store the latest media data
+                        displayMedia(data);
                     }
-                });
+                } catch (e) {
+                    console.error('Failed to parse WebSocket message:', e);
+                    updateStatus('Error processing message.', 'error');
+                }
+            };
 
-                const attemptPlayAudioMotion = () => {
-                    audioElement.play().then(() => {
-                        statusText.textContent = '';
+            const handleWebSocketClose = () => {
+                console.log('WebSocket closed. Attempting to reconnect...');
+                updateStatus('Connection lost. Reconnecting...', 'info');
+                setTimeout(setupWebSocket, 3000); // Attempt reconnect after 3 seconds
+            };
+
+            const handleWebSocketError = (error) => {
+                console.error('WebSocket encountered an error: ', error.message);
+                updateStatus('Connection error. Reconnecting...', 'error');
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.close(); // Close to trigger reconnect logic
+                }
+            };
+
+            // --- UI Update & Media Playback ---
+
+            // Helper to update status text with optional styling
+            const updateStatus = (message, type = 'default') => {
+                dom.statusText.textContent = message;
+                dom.statusText.style.color = type === 'error' ? 'var(--error-color)' :
+                                             type === 'info' ? 'var(--info-color)' :
+                                             'var(--subtle-text-color)';
+            };
+
+            const hideAllMediaPlayers = () => {
+                dom.videoPlayer.style.display = 'none';
+                dom.audioPlayer.style.display = 'none';
+                dom.imageViewer.style.display = 'none';
+                // Clear sources to ensure resources are released
+                dom.videoPlayer.src = '';
+                dom.audioPlayer.src = '';
+                dom.imageViewer.src = '';
+
+                // Clean up AudioMotionAnalyzer if active
+                if (audioMotionInstance) {
+                    audioMotionInstance.disconnect();
+                    audioMotionInstance = null;
+                    dom.audioMotionContainer.innerHTML = ''; // Clear canvas
+                    window.removeEventListener('resize', resizeAudioMotion);
+                }
+            };
+
+            const displayMedia = (data) => {
+                hideAllMediaPlayers(); // Start with a clean slate
+
+                const uniqueUrl = `${data.url}?nocache=${new Date().getTime()}`; // Add nocache
+
+                if (data.mimeType.startsWith('video')) {
+                    dom.videoPlayer.style.display = 'block';
+                    loadAndPlayMedia(dom.videoPlayer, uniqueUrl);
+                    updateStatus('Playing Video...');
+                    updateButtonVisibility('video');
+                } else if (data.mimeType.startsWith('audio')) {
+                    dom.audioPlayer.style.display = 'block';
+                    loadAndPlayMedia(dom.audioPlayer, uniqueUrl);
+                    initAudioMotion(dom.audioPlayer); // Initialize visualizer for audio
+                    updateStatus('Playing Audio...');
+                    updateButtonVisibility('audio');
+                } else if (data.mimeType.startsWith('image')) {
+                    dom.imageViewer.style.display = 'block';
+                    loadImage(dom.imageViewer, uniqueUrl);
+                    updateStatus('Viewing Image... Click to view full screen.');
+                    updateButtonVisibility('image');
+                } else {
+                    console.warn('Unsupported media type: ', data.mimeType);
+                    updateStatus('Unsupported media type.', 'error');
+                    updateButtonVisibility('none');
+                }
+            };
+
+            const loadAndPlayMedia = (player, url) => {
+                player.src = url;
+                player.load(); // Load the media
+
+                const attemptPlay = () => {
+                    player.play().then(() => {
+                        updateStatus('Media playing.');
+                        player.focus(); // Give focus to player for keyboard controls
                     }).catch(error => {
                         if (error.name === 'NotAllowedError') {
-                            statusText.textContent = 'Please click on the page to start audio visualization.';
-                            document.body.addEventListener('click', attemptPlayAudioMotion, { once: true });
+                            updateStatus('Please click on the page to play media (Autoplay blocked).', 'info');
+                            // Add a one-time listener to enable play on user interaction
+                            document.body.addEventListener('click', attemptPlay, { once: true });
                         } else {
-                            console.error('Error with AudioMotion playback: ', error);
-                            statusText.textContent = 'Error with audio playback. Please try reloading.';
+                            console.error('Error playing media: ', error);
+                            updateStatus('Error playing media. Please try reloading.', 'error');
                         }
                     });
                 };
-                attemptPlayAudioMotion();
-            } catch (error) {
-                console.error('AudioMotionAnalyzer error: ', error);
-                statusText.textContent = 'Error initializing audio visualization.';
-            }
-        };
-
-        const loadImage = (imageElement, url) => {
-            imageElement.src = url;
-            imageElement.onload = () => {
-                statusText.textContent = ''; // Clear status after image loads
+                attemptPlay(); // Attempt to play immediately
             };
-            imageElement.onerror = () => {
-                statusText.textContent = 'Error loading image.';
+
+            const loadImage = (imageElement, url) => {
+                imageElement.src = url;
+                imageElement.onload = () => {
+                    updateStatus('Image loaded.');
+                };
+                imageElement.onerror = () => {
+                    updateStatus('Error loading image.', 'error');
+                };
             };
-        };
 
-        const enterFullScreen = (element) => {
-            if (element.requestFullscreen) {
-                element.requestFullscreen();
-            } else if (element.webkitRequestFullscreen) { /* Safari */
-                element.webkitRequestFullscreen();
-            } else if (element.msRequestFullscreen) { /* IE11 */
-                element.msRequestFullscreen();
-            } else if (element.mozRequestFullScreen) { /* Firefox */
-                element.mozRequestFullScreen();
-            }
-        };
+            const updateButtonVisibility = (mediaType) => {
+                dom.reloadButton.style.display = 'inline-block'; // Reload is generally useful
 
-        // Handle control commands from WebSocket
-        const handleControlCommand = (command, value) => {
-            let player = null;
-            if (videoPlayer.style.display === 'block') {
-                player = videoPlayer;
-            } else if (audioPlayer.style.display === 'block') {
-                player = audioPlayer;
-            }
+                if (mediaType === 'video') {
+                    dom.fullscreenButton.style.display = 'inline-block';
+                    dom.fullscreenButton.onclick = () => enterFullScreen(dom.videoPlayer);
+                } else if (mediaType === 'image') {
+                    dom.fullscreenButton.style.display = 'inline-block';
+                    dom.fullscreenButton.onclick = () => enterFullScreen(dom.imageViewer);
+                    dom.reloadButton.style.display = 'none'; // Reload not typical for images
+                } else {
+                    dom.fullscreenButton.style.display = 'none';
+                }
+            };
 
-            if (!player) {
-                console.warn('No active media player to control.');
-                statusText.textContent = 'No media active on player.';
-                return;
-            }
-
-            switch (command) {
-                case 'togglePlayPause': // Single button for play/pause
-                    if (player.paused) {
-                        player.play().then(() => {
-                            statusText.textContent = 'Playing...';
-                        }).catch(e => {
-                            console.error('Error playing:', e);
-                            statusText.textContent = 'Failed to play media.';
-                        });
+            // --- Fullscreen Functionality ---
+            const enterFullScreen = (element) => {
+                if (document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement) {
+                    // If already in fullscreen, exit
+                    if (document.exitFullscreen) {
+                        document.exitFullscreen();
+                    } else if (document.webkitExitFullscreen) { /* Safari */
+                        document.webkitExitFullscreen();
+                    } else if (document.mozCancelFullScreen) { /* Firefox */
+                        document.mozCancelFullScreen();
+                    } else if (document.msExitFullscreen) { /* IE11 */
+                        document.msExitFullscreen();
+                    }
+                } else {
+                    // If not in fullscreen, enter
+                    if (element.requestFullscreen) {
+                        element.requestFullscreen();
+                    } else if (element.webkitRequestFullscreen) { /* Safari */
+                        element.webkitRequestFullscreen();
+                    } else if (element.msRequestFullscreen) { /* IE11 */
+                        element.msRequestFullscreen();
+                    } else if (element.mozRequestFullScreen) { /* Firefox */
+                        element.mozRequestFullScreen();
                     } else {
-                        player.pause();
-                        statusText.textContent = 'Paused.';
+                        updateStatus('Fullscreen not supported by your browser.', 'info');
                     }
-                    break;
-                case 'restart':
-                    player.currentTime = 0;
-                    player.play().then(() => {
-                        statusText.textContent = 'Restarted.';
-                    }).catch(e => {
-                        console.error('Error restarting:', e);
-                        statusText.textContent = 'Failed to restart media.';
+                }
+            };
+
+            // --- AudioMotionAnalyzer Integration ---
+            const initAudioMotion = (audioElement) => {
+                if (audioMotionInstance) { // Clean up previous instance if any
+                    audioMotionInstance.disconnect();
+                    audioMotionInstance = null;
+                    dom.audioMotionContainer.innerHTML = '';
+                }
+
+                try {
+                    audioMotionInstance = new AudioMotionAnalyzer(dom.audioMotionContainer, {
+                        source: audioElement,
+                        height: window.innerHeight,
+                        width: window.innerWidth,
+                        ansiBands: false,
+                        showScaleX: false,
+                        bgAlpha: 0.5,
+                        overlay: true,
+                        mode: 1, // 'discrete' bars
+                        frequencyScale: "log",
+                        radial: true,
+                        showPeaks: false,
+                        showBgColor: true,
+                        radialInvert: true,
+                        channelLayout: "dual-vertical",
+                        smoothing: 0.7,
+                        gradient: "rgb(0, 200, 255), rgb(0, 100, 255), rgb(150, 0, 255)"
                     });
-                    break;
-                case 'seek':
-                    if (typeof value === 'number') {
-                        player.currentTime += value;
-                        statusText.textContent = `Seeked ${value}s. Current time: ${player.currentTime.toFixed(1)}s`;
+
+                    // Store reference and attach resize listener
+                    window.addEventListener('resize', resizeAudioMotion);
+
+                    // Ensure audio starts playing to power visualizer (handles autoplay block)
+                    const attemptPlayVisualizer = () => {
+                        audioElement.play().then(() => {
+                            updateStatus('Audio playing with visualization.');
+                        }).catch(error => {
+                            if (error.name === 'NotAllowedError') {
+                                updateStatus('Please click to enable audio visualization.', 'info');
+                                document.body.addEventListener('click', attemptPlayVisualizer, { once: true });
+                            } else {
+                                console.error('Error starting AudioMotion: ', error);
+                                updateStatus('Error initializing audio visualization.', 'error');
+                            }
+                        });
+                    };
+                    attemptPlayVisualizer();
+
+                } catch (error) {
+                    console.error('AudioMotionAnalyzer initialization error: ', error);
+                    updateStatus('Error initializing audio visualization.', 'error');
+                }
+            };
+
+            const resizeAudioMotion = () => {
+                if (audioMotionInstance) {
+                    audioMotionInstance.setCanvasSize(window.innerWidth, window.innerHeight);
+                }
+            };
+
+            // --- Media Control Commands ---
+            const handleControlCommand = (command, value) => {
+                const currentPlayer = dom.videoPlayer.style.display === 'block' ? dom.videoPlayer :
+                                      dom.audioPlayer.style.display === 'block' ? dom.audioPlayer :
+                                      dom.imageViewer.style.display === 'block' ? dom.imageViewer : // Ensure image viewer is also considered
+                                      null;
+
+                if (!currentPlayer) {
+                    updateStatus('No active media player to control.', 'info');
+                    return;
+                }
+
+                switch (command) {
+                    case 'togglePlayPause':
+                        if (currentPlayer.paused) {
+                            currentPlayer.play().then(() => updateStatus('Playing...')).catch(e => {
+                                console.error('Error playing:', e);
+                                updateStatus('Failed to play media.', 'error');
+                            });
+                        } else {
+                            currentPlayer.pause();
+                            updateStatus('Paused.');
+                        }
+                        break;
+                    case 'restart':
+                        currentPlayer.currentTime = 0;
+                        currentPlayer.play().then(() => updateStatus('Restarted.')).catch(e => {
+                            console.error('Error restarting:', e);
+                            updateStatus('Failed to restart media.', 'error');
+                        });
+                        break;
+                    case 'seek':
+                        if (typeof value === 'number') {
+                            currentPlayer.currentTime = Math.max(0, Math.min(currentPlayer.duration, currentPlayer.currentTime + value));
+                            updateStatus(`Seeked ${value}s. Current time: ${currentPlayer.currentTime.toFixed(1)}s`);
+                        }
+                        break;
+                    case 'toggleFullscreen': // NEW: Handle the toggle fullscreen command
+                        if (currentPlayer) {
+                            enterFullScreen(currentPlayer);
+                            updateStatus('Fullscreen toggled.');
+                        } else {
+                            updateStatus('No active media player for fullscreen.', 'info');
+                        }
+                        break;
+                    default:
+                        console.warn('Unknown command:', command);
+                        updateStatus('Unknown command received.', 'info');
+                }
+            };
+
+            // --- Event Listeners ---
+            const setupEventListeners = () => {
+                dom.imageViewer.addEventListener('click', () => {
+                    enterFullScreen(dom.imageViewer);
+                });
+
+                dom.reloadButton.addEventListener('click', () => {
+                    if (latestMediaData) {
+                        displayMedia(latestMediaData); // Re-trigger display with last known data
+                        updateStatus('Reloading media...');
+                    } else {
+                        updateStatus('No media loaded to reload.', 'info');
                     }
-                    break;
-                default:
-                    console.warn('Unknown command:', command);
-                    statusText.textContent = 'Unknown command received.';
-            }
-        };
+                });
+                // Fullscreen button click handler is set dynamically in updateButtonVisibility
+            };
 
-        imageViewer.addEventListener('click', () => {
-            enterFullScreen(imageViewer);
+            // --- Initialization ---
+            const initialize = () => {
+                setupWebSocket();
+                setupEventListeners();
+                // Initial status message (overridden by WebSocket open message)
+                updateStatus('Chat ID: {{.ChatID}}; Waiting for media...');
+            };
+
+            initialize(); // Start the application
         });
-
-        // Event listeners for buttons
-        reloadButton.addEventListener('click', () => {
-            if (latestMediaData) {
-                playMedia(latestMediaData); // Re-trigger playMedia with the last known media data
-            }
-        });
-
-        // Initial setup
-        setupWebSocket();
-    });
-
-</script>
+    </script>
 </body>
 </html>
