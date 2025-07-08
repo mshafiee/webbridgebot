@@ -33,7 +33,6 @@
         /* Base Styles */
         body {
             margin: 0;
-            padding: var(--spacing-lg);
             box-sizing: border-box;
             display: flex;
             flex-direction: column;
@@ -42,31 +41,45 @@
             background-color: var(--background-color);
             color: var(--text-color);
             position: relative;
+            height: 100vh; /* Make body take up full viewport height explicitly */
+            overflow: hidden; /* Prevent body scrolling */
         }
 
-        /* Global Typography & Elements */
+        /* Header Styles */
+        header {
+            padding-top: var(--spacing-lg);
+            padding-left: var(--spacing-lg);
+            padding-right: var(--spacing-lg);
+            padding-bottom: var(--spacing-sm); /* Smaller padding to status below */
+            flex-shrink: 0; /* Prevent header from shrinking */
+            text-align: center; /* Center h1 that is INSIDE header */
+        }
+
         h1 {
             color: var(--primary-color);
             font-size: var(--font-size-h1);
             font-weight: 700;
-            margin: var(--spacing-lg) 0 var(--spacing-sm) 0; /* Adjusted margin-bottom */
-            text-align: center;
+            margin: 0; /* Remove h1's internal margins as padding is on header */
             text-shadow: 3px 3px 8px var(--shadow-dark);
             z-index: 2;
             position: relative;
         }
 
+        /* Status text styles (now a direct child of body) */
         #status {
             font-size: var(--font-size-status);
-            margin: 0 0 var(--spacing-md) 0; /* Adjusted margins */
-            text-align: center;
+            margin-top: var(--spacing-sm);    /* Space between header and status */
+            margin-bottom: var(--spacing-md); /* Space between status and main */
             color: var(--subtle-text-color); /* Default color */
             text-shadow: 2px 2px 6px var(--shadow-dark);
             z-index: 2;
             position: relative;
+            flex-shrink: 0; /* Prevent status from shrinking */
+            padding: 0 var(--spacing-lg); /* Horizontal padding for consistency */
+            text-align: center;
         }
 
-        /* Main Content Area - This will be our flexible "portion" */
+        /* Main Content Area - Flexible height */
         main {
             flex-grow: 1; /* This makes 'main' take up all available vertical space */
             display: flex; /* Make main a flex container to center its children */
@@ -74,8 +87,11 @@
             align-items: center; /* Center media vertically */
             width: 100%; /* Ensure it spans the full width available */
             max-width: 1400px; /* Optional: constrain max width for very large screens */
-            margin: var(--spacing-md) auto; /* Add vertical margin, center horizontally */
-            overflow: hidden; /* Hide anything that might overflow this main area */
+            margin: 0 auto; /* Remove vertical margin from main for full flexibility */
+            padding-left: var(--spacing-lg);
+            padding-right: var(--spacing-lg);
+            overflow: hidden; /* Hide anything that might overflow this main area without scrolling main */
+            box-sizing: border-box; /* Include padding in height calculation */
         }
 
         /* Media Player Elements - Now fit within the flexible 'main' area */
@@ -83,7 +99,7 @@
         #audioPlayer,
         #imageViewer {
             max-width: 100%; /* Max width of its parent 'main' */
-            max-height: 100%; /* Max height of its parent 'main' */
+            max-height: 100%; /* Crucial: Max height of its parent 'main' */
             width: auto; /* Allow natural aspect ratio to dictate actual width */
             height: auto; /* Allow natural aspect ratio to dictate actual height */
             display: none; /* Hidden by default */
@@ -100,10 +116,14 @@
             flex-wrap: wrap;
             justify-content: center;
             width: 100%;
-            margin: var(--spacing-md) 0 var(--spacing-lg) 0;
+            padding-top: var(--spacing-md);
+            padding-left: var(--spacing-lg);
+            padding-right: var(--spacing-lg);
+            padding-bottom: var(--spacing-lg); /* Bottom padding for the whole page */
             gap: var(--spacing-sm);
             z-index: 3;
             position: relative;
+            flex-shrink: 0; /* Prevent button container from shrinking */
         }
 
         .button {
@@ -141,8 +161,12 @@
 
         /* Media Queries for Responsiveness */
         @media (max-width: 768px) {
-            body {
-                padding: var(--spacing-md);
+            /* body padding removed */
+            header,
+            main,
+            .button-container {
+                padding-left: var(--spacing-md);
+                padding-right: var(--spacing-md);
             }
 
             h1 {
@@ -164,13 +188,16 @@
         }
 
         @media (max-width: 480px) {
-            body {
-                padding: var(--spacing-sm);
+            /* body padding removed */
+            header,
+            main,
+            .button-container {
+                padding-left: var(--spacing-sm);
+                padding-right: var(--spacing-sm);
             }
 
             h1 {
                 font-size: 1.7rem;
-                margin: var(--spacing-md) 0 var(--spacing-sm) 0;
             }
 
             #status {
@@ -186,7 +213,7 @@
                 flex-direction: column;
                 align-items: center;
                 gap: 0.5rem;
-                width: 90%;
+                width: auto;
             }
         }
     </style>
@@ -194,8 +221,8 @@
 <body>
     <header>
         <h1>WebBridgeBot</h1>
-        <p id="status">Chat ID: {{.ChatID}}; Waiting for media...</p>
     </header>
+    <p id="status">Chat ID: {{.ChatID}}; Waiting for media...</p>
 
     <main>
         <video id="videoPlayer" controls></video>
