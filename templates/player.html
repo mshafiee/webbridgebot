@@ -125,8 +125,14 @@
         const handleWebSocketMessage = (event) => {
             const data = JSON.parse(event.data);
             console.log('Message from server: ', data);
-            latestMediaData = data; // Store the latest media data
-            playMedia(data);
+            
+            // Check if the message is a control command or new media
+            if (data.command) {
+                handleControlCommand(data.command, data.value);
+            } else {
+                latestMediaData = data; // Store the latest media data
+                playMedia(data);
+            }
         };
 
         const handleWebSocketClose = () => {
@@ -311,6 +317,56 @@
                 element.msRequestFullscreen();
             } else if (element.mozRequestFullScreen) { /* Firefox */
                 element.mozRequestFullScreen();
+            }
+        };
+
+        // Handle control commands from WebSocket
+        const handleControlCommand = (command, value) => {
+            let player = null;
+            if (videoPlayer.style.display === 'block') {
+                player = videoPlayer;
+            } else if (audioPlayer.style.display === 'block') {
+                player = audioPlayer;
+            }
+
+            if (!player) {
+                console.warn('No active media player to control.');
+                statusText.textContent = 'No media active on player.';
+                return;
+            }
+
+            switch (command) {
+                case 'togglePlayPause': // Single button for play/pause
+                    if (player.paused) {
+                        player.play().then(() => {
+                            statusText.textContent = 'Playing...';
+                        }).catch(e => {
+                            console.error('Error playing:', e);
+                            statusText.textContent = 'Failed to play media.';
+                        });
+                    } else {
+                        player.pause();
+                        statusText.textContent = 'Paused.';
+                    }
+                    break;
+                case 'restart':
+                    player.currentTime = 0;
+                    player.play().then(() => {
+                        statusText.textContent = 'Restarted.';
+                    }).catch(e => {
+                        console.error('Error restarting:', e);
+                        statusText.textContent = 'Failed to restart media.';
+                    });
+                    break;
+                case 'seek':
+                    if (typeof value === 'number') {
+                        player.currentTime += value;
+                        statusText.textContent = `Seeked ${value}s. Current time: ${player.currentTime.toFixed(1)}s`;
+                    }
+                    break;
+                default:
+                    console.warn('Unknown command:', command);
+                    statusText.textContent = 'Unknown command received.';
             }
         };
 

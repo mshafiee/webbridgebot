@@ -71,8 +71,15 @@ func (r *UserRepository) GetUserInfo(userID int64) (*User, error) {
 	row := r.db.QueryRow(query, userID)
 
 	var user User
-	if err := row.Scan(&user.UserID, &user.ChatID, &user.FirstName, &user.LastName, &user.Username, &user.IsAuthorized, &user.IsAdmin, &user.CreatedAt); err != nil {
+	var username sql.NullString // Use sql.NullString for nullable columns
+	if err := row.Scan(&user.UserID, &user.ChatID, &user.FirstName, &user.LastName, &username, &user.IsAuthorized, &user.IsAdmin, &user.CreatedAt); err != nil {
 		return nil, err
+	}
+
+	if username.Valid {
+		user.Username = username.String
+	} else {
+		user.Username = ""
 	}
 
 	return &user, nil
@@ -117,10 +124,57 @@ func (r *UserRepository) GetAllAdmins() ([]User, error) {
 	var admins []User
 	for rows.Next() {
 		var user User
-		if err := rows.Scan(&user.UserID, &user.ChatID, &user.FirstName, &user.LastName, &user.Username); err != nil {
+		var username sql.NullString
+		if err := rows.Scan(&user.UserID, &user.ChatID, &user.FirstName, &user.LastName, &username); err != nil {
 			return nil, err
+		}
+		if username.Valid {
+			user.Username = username.String
+		} else {
+			user.Username = ""
 		}
 		admins = append(admins, user)
 	}
 	return admins, nil
+}
+
+// GetUserCount returns the total number of users in the database.
+func (r *UserRepository) GetUserCount() (int, error) {
+	query := `SELECT COUNT(*) FROM users`
+	var count int
+	err := r.db.QueryRow(query).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get user count: %w", err)
+	}
+	return count, nil
+}
+
+// GetAllUsers retrieves a paginated list of all users.
+func (r *UserRepository) GetAllUsers(offset, limit int) ([]User, error) {
+	query := `SELECT user_id, chat_id, first_name, last_name, username, is_authorized, is_admin, created_at FROM users ORDER BY user_id LIMIT ? OFFSET ?`
+	rows, err := r.db.Query(query, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query all users: %w", err)
+	}
+	defer rows.Close()
+
+	var users []User
+	for rows.Next() {
+		var user User
+		// Scan into local variables first for username (nullable string)
+		var username sql.NullString
+		if err := rows.Scan(&user.UserID, &user.ChatID, &user.FirstName, &user.LastName, &username, &user.IsAuthorized, &user.IsAdmin, &user.CreatedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan user row: %w", err)
+		}
+		if username.Valid {
+			user.Username = username.String
+		} else {
+			user.Username = "" // Ensure it's an empty string if null
+		}
+		users = append(users, user)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error during rows iteration: %w", err)
+	}
+	return users, nil
 }

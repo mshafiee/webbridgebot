@@ -32,6 +32,13 @@ import (
 
 const (
 	callbackResendToPlayer = "cb_ResendToPlayer"
+	// New control action callbacks
+	callbackPlay           = "cb_Play" // Will be used for Play/Pause toggle
+	callbackRestart        = "cb_Restart"
+	callbackForward10      = "cb_Fwd10"
+	callbackBackward10     = "cb_Bwd10"
+	callbackListUsers      = "cb_listusers"        // For pagination of /listusers command
+	callbackUserAuthAction = "cb_user_auth_action" // For user authorization/decline buttons
 	tmplPath               = "templates/player.html"
 )
 
@@ -113,8 +120,10 @@ func (b *TelegramBot) registerHandlers() {
 	clientDispatcher.AddHandler(handlers.NewCommand("start", b.handleStartCommand))
 	clientDispatcher.AddHandler(handlers.NewCommand("authorize", b.handleAuthorizeUser))
 	clientDispatcher.AddHandler(handlers.NewCommand("deauthorize", b.handleDeauthorizeUser))
-	clientDispatcher.AddHandler(handlers.NewCallbackQuery(filters.CallbackQuery.Prefix("cb_"), b.handleCallbackQuery))
-	clientDispatcher.AddHandler(handlers.NewAnyUpdate(b.handleAnyUpdate)) // Can be removed for production to reduce noise
+	clientDispatcher.AddHandler(handlers.NewCommand("listusers", b.handleListUsers))
+	clientDispatcher.AddHandler(handlers.NewCommand("userinfo", b.handleUserInfo))
+	clientDispatcher.AddHandler(handlers.NewCallbackQuery(filters.CallbackQuery.Prefix("cb_"), b.handleCallbackQuery)) // Catch all cb_ prefixes
+	clientDispatcher.AddHandler(handlers.NewAnyUpdate(b.handleAnyUpdate))                                              // Can be removed for production to reduce noise
 	// These filters handle both forwarded and directly uploaded media
 	clientDispatcher.AddHandler(handlers.NewMessage(filters.Message.Audio, b.handleMediaMessages))
 	clientDispatcher.AddHandler(handlers.NewMessage(filters.Message.Video, b.handleMediaMessages))
@@ -169,7 +178,7 @@ func (b *TelegramBot) handleStartCommand(ctx *ext.Context, u *ext.Update) error 
 		b.logger.Printf("Stored new user %d with isAuthorized=%t, isAdmin=%t", user.ID, isAuthorized, isAdmin)
 
 		if !isAdmin {
-			go b.notifyAdminsAboutNewUser(user)
+			go b.notifyAdminsAboutNewUser(user, chatID)
 		}
 	} else {
 		isAuthorized = existingUser.IsAuthorized
@@ -180,7 +189,7 @@ func (b *TelegramBot) handleStartCommand(ctx *ext.Context, u *ext.Update) error 
 	webURL := fmt.Sprintf("%s/%d", b.config.BaseURL, chatID)
 	startMsg := fmt.Sprintf(
 		"Hello %s, I am @%s, your bridge between Telegram and the Web!\n"+
-			"You can forward or *directly upload* media to this bot, and I will play it on your web player instantly.\n"+
+			"You can forward or directly upload media to this bot, and I will play it on your web player instantly.\n"+
 			"Click on 'Open Web URL' below or access your player here: %s",
 		user.FirstName, ctx.Self.Username, webURL,
 	)
@@ -191,7 +200,7 @@ func (b *TelegramBot) handleStartCommand(ctx *ext.Context, u *ext.Update) error 
 	}
 
 	if !isAuthorized {
-		b.logger.Printf("DEBUG: User %d is NOT authorized (isAuthorized=%t) after /start. Sending unauthorized message.", user.ID, isAuthorized) // Added DEBUG log
+		b.logger.Printf("DEBUG: User %d is NOT authorized (isAuthorized=%t). Sending unauthorized message for media.", user.ID, isAuthorized) // Added DEBUG log
 		authorizationMsg := "You are not authorized to use this bot yet. Please ask one of the administrators to authorize you and wait until you receive a confirmation."
 		return b.sendReply(ctx, u, authorizationMsg)
 	}
@@ -200,7 +209,7 @@ func (b *TelegramBot) handleStartCommand(ctx *ext.Context, u *ext.Update) error 
 }
 
 // notifyAdminsAboutNewUser sends a notification to all admins about the new user.
-func (b *TelegramBot) notifyAdminsAboutNewUser(newUser *tg.User) {
+func (b *TelegramBot) notifyAdminsAboutNewUser(newUser *tg.User, newUsersChatID int64) {
 	admins, err := b.userRepository.GetAllAdmins()
 	if err != nil {
 		b.logger.Printf("Failed to retrieve admin list: %v", err)
@@ -210,18 +219,36 @@ func (b *TelegramBot) notifyAdminsAboutNewUser(newUser *tg.User) {
 	var notificationMsg string
 	username, hasUsername := newUser.GetUsername()
 	if hasUsername {
-		notificationMsg = fmt.Sprintf("A new user has joined: @%s (%s %s)\nID: %d\nUse this command: /authorize %d", username, newUser.FirstName, newUser.LastName, newUser.ID, newUser.ID)
+		// Do not escape here, Telegram will parse MarkdownV2 if ParseMode is set
+		notificationMsg = fmt.Sprintf("A new user has joined: *@%s* (%s %s)\nID: `%d`\n\n_Use the buttons below to manage authorization._", username, newUser.FirstName, newUser.LastName, newUser.ID)
 	} else {
-		notificationMsg = fmt.Sprintf("A new user has joined: %s %s\nID: %d\nUse this command: /authorize %d", newUser.FirstName, newUser.LastName, newUser.ID, newUser.ID)
+		notificationMsg = fmt.Sprintf("A new user has joined: %s %s\nID: `%d`\n\n_Use the buttons below to manage authorization._", newUser.FirstName, newUser.LastName, newUser.ID)
+	}
+
+	markup := &tg.ReplyInlineMarkup{
+		Rows: []tg.KeyboardButtonRow{
+			{
+				Buttons: []tg.KeyboardButtonClass{
+					&tg.KeyboardButtonCallback{Text: "✅ Authorize", Data: []byte(fmt.Sprintf("%s,%d,authorize", callbackUserAuthAction, newUser.ID))},
+					&tg.KeyboardButtonCallback{Text: "❌ Decline", Data: []byte(fmt.Sprintf("%s,%d,decline", callbackUserAuthAction, newUser.ID))},
+				},
+			},
+		},
 	}
 
 	for _, admin := range admins {
 		// Avoid notifying the new user if they happened to be the first admin
-		if admin.UserID == newUser.ID {
+		// Also avoid notifying the new user if the admin who triggered the update is the new user
+		if admin.UserID == newUser.ID && admin.UserID == newUsersChatID {
 			continue
 		}
 		b.logger.Printf("Notifying admin %d about new user %d", admin.UserID, newUser.ID)
-		_, err := b.tgCtx.SendMessage(admin.ChatID, &tg.MessagesSendMessageRequest{Message: notificationMsg})
+
+		// Directly send the message with ParseMode set to MarkdownV2
+		_, err := b.tgCtx.SendMessage(admin.ChatID, &tg.MessagesSendMessageRequest{
+			Message:     notificationMsg,
+			ReplyMarkup: markup,
+		})
 		if err != nil {
 			b.logger.Printf("Failed to notify admin %d: %v", admin.UserID, err)
 		}
@@ -382,7 +409,7 @@ func (b *TelegramBot) isUserChat(ctx *ext.Context, chatID int64) bool {
 }
 
 func (b *TelegramBot) sendReply(ctx *ext.Context, u *ext.Update, msg string) error {
-	_, err := ctx.Reply(u, msg, &ext.ReplyOpts{})
+	_, err := ctx.Reply(u, ext.ReplyTextString(msg), &ext.ReplyOpts{}) // Use ReplyTextString for plain text
 	if err != nil {
 		b.logger.Printf("Failed to send reply to user: %s (ID: %d) - Error: %v", u.EffectiveUser().FirstName, u.EffectiveUser().ID, err)
 	}
@@ -390,7 +417,7 @@ func (b *TelegramBot) sendReply(ctx *ext.Context, u *ext.Update, msg string) err
 }
 
 func (b *TelegramBot) sendMediaURLReply(ctx *ext.Context, u *ext.Update, msg, webURL string) error {
-	_, err := ctx.Reply(u, msg, &ext.ReplyOpts{
+	_, err := ctx.Reply(u, ext.ReplyTextString(msg), &ext.ReplyOpts{ // Use ReplyTextString for plain text
 		Markup: &tg.ReplyInlineMarkup{
 			Rows: []tg.KeyboardButtonRow{
 				{
@@ -409,7 +436,7 @@ func (b *TelegramBot) sendMediaURLReply(ctx *ext.Context, u *ext.Update, msg, we
 }
 
 func (b *TelegramBot) sendMediaToUser(ctx *ext.Context, u *ext.Update, fileURL string, file *types.DocumentFile) error {
-	_, err := ctx.Reply(u, fileURL, &ext.ReplyOpts{
+	_, err := ctx.Reply(u, ext.ReplyTextString(fileURL), &ext.ReplyOpts{ // Use ReplyTextString for plain text
 		Markup: &tg.ReplyInlineMarkup{
 			Rows: []tg.KeyboardButtonRow{
 				{
@@ -419,6 +446,14 @@ func (b *TelegramBot) sendMediaToUser(ctx *ext.Context, u *ext.Update, fileURL s
 							Data: []byte(fmt.Sprintf("%s,%d", callbackResendToPlayer, u.EffectiveMessage.Message.ID)),
 						},
 						&tg.KeyboardButtonURL{Text: "Stream URL", URL: fileURL},
+					},
+				},
+				{
+					Buttons: []tg.KeyboardButtonClass{
+						&tg.KeyboardButtonCallback{Text: "▶️/⏸️", Data: []byte(callbackPlay)},
+						&tg.KeyboardButtonCallback{Text: "🔄", Data: []byte(callbackRestart)},
+						&tg.KeyboardButtonCallback{Text: "⏪ 10s", Data: []byte(callbackBackward10)},
+						&tg.KeyboardButtonCallback{Text: "⏩ 10s", Data: []byte(callbackForward10)},
 					},
 				},
 			},
@@ -443,6 +478,26 @@ func (b *TelegramBot) constructWebSocketMessage(fileURL string, file *types.Docu
 		"duration": strconv.Itoa(file.Duration),
 		"width":    strconv.Itoa(file.Width),
 		"height":   strconv.Itoa(file.Height),
+	}
+}
+
+// publishControlCommandToWebSocket sends a control command to the specified chat's WebSocket client.
+func (b *TelegramBot) publishControlCommandToWebSocket(chatID int64, command string, value interface{}) {
+	if client, ok := wsClients[chatID]; ok {
+		msg := map[string]interface{}{
+			"command": command,
+			"value":   value,
+		}
+		messageJSON, err := json.Marshal(msg)
+		if err != nil {
+			log.Println("Error marshalling control message:", err)
+			return
+		}
+		if err := client.WriteMessage(websocket.TextMessage, messageJSON); err != nil {
+			log.Println("Error sending WebSocket control message:", err)
+			delete(wsClients, chatID) // Remove client if write fails
+			client.Close()            // Close the problematic connection
+		}
 	}
 }
 
@@ -472,28 +527,239 @@ func (b *TelegramBot) publishToWebSocket(chatID int64, message map[string]string
 }
 
 func (b *TelegramBot) handleCallbackQuery(ctx *ext.Context, u *ext.Update) error {
-	dataParts := strings.Split(string(u.CallbackQuery.Data), ",")
-	if len(dataParts) > 0 && dataParts[0] == callbackResendToPlayer && len(dataParts) > 1 {
-		messageID, err := strconv.Atoi(dataParts[1])
-		if err != nil {
-			return err
+	// Check for user authorization/decline callbacks first
+	if strings.HasPrefix(string(u.CallbackQuery.Data), callbackUserAuthAction) {
+		dataParts := strings.Split(string(u.CallbackQuery.Data), ",")
+		if len(dataParts) < 3 {
+			_, _ = ctx.AnswerCallback(&tg.MessagesSetBotCallbackAnswerRequest{
+				QueryID: u.CallbackQuery.QueryID,
+				Message: "Invalid user authorization callback data.",
+			})
+			return nil
 		}
 
-		// Re-fetch the message and file from Telegram (or cache)
-		file, err := utils.FileFromMessage(ctx, b.tgClient, messageID)
+		targetUserID, err := strconv.ParseInt(dataParts[1], 10, 64)
 		if err != nil {
-			b.logger.Printf("Error fetching file for message ID %d for callback: %v", messageID, err)
-			return fmt.Errorf("failed to get file from message for callback: %w", err)
+			_, _ = ctx.AnswerCallback(&tg.MessagesSetBotCallbackAnswerRequest{
+				QueryID: u.CallbackQuery.QueryID,
+				Message: "Invalid user ID in callback data.",
+			})
+			return nil
+		}
+		actionType := dataParts[2]
+
+		// Ensure the current user is an admin
+		adminID := u.EffectiveUser().ID
+		adminUserInfo, err := b.userRepository.GetUserInfo(adminID)
+		if err != nil || !adminUserInfo.IsAdmin {
+			_, _ = ctx.AnswerCallback(&tg.MessagesSetBotCallbackAnswerRequest{
+				QueryID: u.CallbackQuery.QueryID,
+				Message: "You are not authorized to perform this action.",
+			})
+			return nil
 		}
 
-		wsMsg := b.constructWebSocketMessage(b.generateFileURL(messageID, file), file)
-		b.publishToWebSocket(u.EffectiveChat().GetID(), wsMsg)
+		targetUserInfo, err := b.userRepository.GetUserInfo(targetUserID)
+		if err != nil {
+			_, _ = ctx.AnswerCallback(&tg.MessagesSetBotCallbackAnswerRequest{
+				QueryID: u.CallbackQuery.QueryID,
+				Message: "Target user not found.",
+			})
+			return nil
+		}
+
+		var (
+			adminResponseMessage    string
+			userNotificationMessage string
+		)
+
+		switch actionType {
+		case "authorize":
+			if targetUserInfo.IsAuthorized {
+				adminResponseMessage = fmt.Sprintf("User %d is already authorized.", targetUserID)
+			} else {
+				err = b.userRepository.AuthorizeUser(targetUserID, false) // Authorize, but not as admin via this button
+				if err != nil {
+					b.logger.Printf("Failed to authorize user %d via callback: %v", targetUserID, err)
+					adminResponseMessage = fmt.Sprintf("Failed to authorize user %d.", targetUserID)
+				} else {
+					adminResponseMessage = fmt.Sprintf("User %d authorized successfully.", targetUserID)
+					userNotificationMessage = "You have been authorized to use WebBridgeBot!"
+				}
+			}
+		case "decline":
+			if !targetUserInfo.IsAuthorized {
+				adminResponseMessage = fmt.Sprintf("User %d is already deauthorized.", targetUserID)
+			} else {
+				err = b.userRepository.DeauthorizeUser(targetUserID) // Deauthorize, also removes admin status
+				if err != nil {
+					b.logger.Printf("Failed to deauthorize user %d via callback: %v", targetUserID, err)
+					adminResponseMessage = fmt.Sprintf("Failed to deauthorize user %d.", targetUserID)
+				} else {
+					adminResponseMessage = fmt.Sprintf("User %d deauthorized successfully.", targetUserID)
+					userNotificationMessage = "Your request to use WebBridgeBot has been declined by an administrator."
+				}
+			}
+		default:
+			adminResponseMessage = "Unknown authorization action."
+		}
 
 		_, _ = ctx.AnswerCallback(&tg.MessagesSetBotCallbackAnswerRequest{
-			Alert:   false, // Set to false to avoid pop-up message for successful resend
 			QueryID: u.CallbackQuery.QueryID,
-			Message: fmt.Sprintf("The %s file has been sent to the web player.", file.FileName),
+			Message: adminResponseMessage,
 		})
+
+		if userNotificationMessage != "" {
+			_, err := b.tgCtx.SendMessage(targetUserInfo.ChatID, &tg.MessagesSendMessageRequest{Message: userNotificationMessage})
+			if err != nil {
+				b.logger.Printf("Failed to send notification to user %d: %v", targetUserID, err)
+			}
+		}
+		return nil
+	}
+
+	// Then, check for `cb_ResendToPlayer` which has a specific format with message ID.
+	if strings.HasPrefix(string(u.CallbackQuery.Data), callbackResendToPlayer) {
+		dataParts := strings.Split(string(u.CallbackQuery.Data), ",")
+		if len(dataParts) > 1 {
+			messageID, err := strconv.Atoi(dataParts[1])
+			if err != nil {
+				_, _ = ctx.AnswerCallback(&tg.MessagesSetBotCallbackAnswerRequest{
+					QueryID: u.CallbackQuery.QueryID,
+					Message: "Invalid message ID in callback data.",
+				})
+				return nil
+			}
+
+			file, err := utils.FileFromMessage(ctx, b.tgClient, messageID)
+			if err != nil {
+				b.logger.Printf("Error fetching file for message ID %d for callback: %v", messageID, err)
+				_, _ = ctx.AnswerCallback(&tg.MessagesSetBotCallbackAnswerRequest{
+					QueryID: u.CallbackQuery.QueryID,
+					Message: "Failed to retrieve file info.",
+				})
+				return nil
+			}
+
+			wsMsg := b.constructWebSocketMessage(b.generateFileURL(messageID, file), file)
+			b.publishToWebSocket(u.EffectiveChat().GetID(), wsMsg)
+
+			_, _ = ctx.AnswerCallback(&tg.MessagesSetBotCallbackAnswerRequest{
+				Alert:   false,
+				QueryID: u.CallbackQuery.QueryID,
+				Message: fmt.Sprintf("The %s file has been sent to the web player.", file.FileName),
+			})
+			return nil
+		}
+	}
+
+	// For other simple commands, they are simple string matches.
+	callbackType := string(u.CallbackQuery.Data)
+	chatID := u.EffectiveChat().GetID() // The chat ID to which the web player is linked.
+
+	switch callbackType {
+	case callbackPlay:
+		if _, ok := wsClients[chatID]; ok { // Check if a websocket is connected for this chatID
+			b.publishControlCommandToWebSocket(chatID, "togglePlayPause", nil) // Client side will toggle
+			_, _ = ctx.AnswerCallback(&tg.MessagesSetBotCallbackAnswerRequest{
+				QueryID: u.CallbackQuery.QueryID,
+				Message: "Playback toggled.",
+			})
+		} else {
+			_, _ = ctx.AnswerCallback(&tg.MessagesSetBotCallbackAnswerRequest{
+				QueryID: u.CallbackQuery.QueryID,
+				Message: "Web player not connected.",
+			})
+		}
+	case callbackRestart:
+		if _, ok := wsClients[chatID]; ok {
+			b.publishControlCommandToWebSocket(chatID, "restart", nil)
+			_, _ = ctx.AnswerCallback(&tg.MessagesSetBotCallbackAnswerRequest{
+				QueryID: u.CallbackQuery.QueryID,
+				Message: "Restarting media.",
+			})
+		} else {
+			_, _ = ctx.AnswerCallback(&tg.MessagesSetBotCallbackAnswerRequest{
+				QueryID: u.CallbackQuery.QueryID,
+				Message: "Web player not connected.",
+			})
+		}
+	case callbackForward10:
+		if _, ok := wsClients[chatID]; ok {
+			b.publishControlCommandToWebSocket(chatID, "seek", 10)
+			_, _ = ctx.AnswerCallback(&tg.MessagesSetBotCallbackAnswerRequest{
+				QueryID: u.CallbackQuery.QueryID,
+				Message: "Forwarded 10 seconds.",
+			})
+		} else {
+			_, _ = ctx.AnswerCallback(&tg.MessagesSetBotCallbackAnswerRequest{
+				QueryID: u.CallbackQuery.QueryID,
+				Message: "Web player not connected.",
+			})
+		}
+	case callbackBackward10:
+		if _, ok := wsClients[chatID]; ok {
+			b.publishControlCommandToWebSocket(chatID, "seek", -10)
+			_, _ = ctx.AnswerCallback(&tg.MessagesSetBotCallbackAnswerRequest{
+				QueryID: u.CallbackQuery.QueryID,
+				Message: "Rewound 10 seconds.",
+			})
+		} else {
+			_, _ = ctx.AnswerCallback(&tg.MessagesSetBotCallbackAnswerRequest{
+				QueryID: u.CallbackQuery.QueryID,
+				Message: "Web player not connected.",
+			})
+		}
+	case callbackListUsers:
+		// Handle pagination for /listusers. The data format is "cb_listusers,PAGE_NUMBER"
+		dataParts := strings.Split(string(u.CallbackQuery.Data), ",")
+		if len(dataParts) < 2 {
+			_, _ = ctx.AnswerCallback(&tg.MessagesSetBotCallbackAnswerRequest{
+				QueryID: u.CallbackQuery.QueryID,
+				Message: "Invalid callback data for listusers pagination.",
+			})
+			return nil
+		}
+		page, err := strconv.Atoi(dataParts[1])
+		if err != nil {
+			_, _ = ctx.AnswerCallback(&tg.MessagesSetBotCallbackAnswerRequest{
+				QueryID: u.CallbackQuery.QueryID,
+				Message: "Invalid page number.",
+			})
+			return nil
+		}
+		// Store original text
+		originalMessageText := u.EffectiveMessage.Text
+		// Modify the text of the existing EffectiveMessage to simulate the command
+		// This is a common pattern for re-dispatching to command handlers
+		u.EffectiveMessage.Text = fmt.Sprintf("/listusers %d", page)
+		// Call the handler directly with the *original* update object, which now has modified text
+		err = b.handleListUsers(ctx, u)
+		// Restore original text immediately after, in case 'u' object is reused by dispatcher.
+		u.EffectiveMessage.Text = originalMessageText
+
+		if err != nil {
+			b.logger.Printf("Error processing listusers callback: %v", err)
+			_, _ = ctx.AnswerCallback(&tg.MessagesSetBotCallbackAnswerRequest{
+				QueryID: u.CallbackQuery.QueryID,
+				Message: "Error loading users.",
+			})
+		} else {
+			_, _ = ctx.AnswerCallback(&tg.MessagesSetBotCallbackAnswerRequest{
+				QueryID: u.CallbackQuery.QueryID,
+				Message: "Users list updated.",
+			})
+		}
+		return nil
+
+	default:
+		// Fallback for unknown callback queries, or if `cb_ResendToPlayer` didn't match.
+		b.logger.Printf("Unknown callback query received: %s", u.CallbackQuery.Data)
+		_, _ = ctx.AnswerCallback(&tg.MessagesSetBotCallbackAnswerRequest{
+			QueryID: u.CallbackQuery.QueryID,
+			Message: "Unknown action.",
+		})
+		return nil
 	}
 	return nil
 }
@@ -695,4 +961,182 @@ func (b *TelegramBot) handlePlayer(w http.ResponseWriter, r *http.Request) {
 		b.logger.Printf("Error rendering template: %v", err)
 		http.Error(w, "Failed to render template", http.StatusInternalServerError)
 	}
+}
+
+// handleListUsers lists all users in a paginated format
+func (b *TelegramBot) handleListUsers(ctx *ext.Context, u *ext.Update) error {
+	adminID := u.EffectiveUser().ID
+	userInfo, err := b.userRepository.GetUserInfo(adminID)
+	if err != nil || !userInfo.IsAdmin {
+		return b.sendReply(ctx, u, "You are not authorized to perform this action.")
+	}
+
+	const pageSize = 10
+	page := 1
+	args := strings.Fields(u.EffectiveMessage.Text)
+	if len(args) > 1 {
+		parsedPage, err := strconv.Atoi(args[1])
+		if err == nil && parsedPage > 0 {
+			page = parsedPage
+		}
+	}
+
+	totalUsers, err := b.userRepository.GetUserCount()
+	if err != nil {
+		b.logger.Printf("Failed to get user count: %v", err)
+		return b.sendReply(ctx, u, "Error retrieving user count.")
+	}
+
+	offset := (page - 1) * pageSize
+	users, err := b.userRepository.GetAllUsers(offset, pageSize)
+	if err != nil {
+		b.logger.Printf("Failed to get users for listing: %v", err)
+		return b.sendReply(ctx, u, "Error retrieving user list.")
+	}
+
+	if len(users) == 0 {
+		return b.sendReply(ctx, u, "No users found or page is empty.")
+	}
+
+	var msg strings.Builder
+	msg.WriteString("👥 *User List*\n\n")
+	for i, user := range users {
+		status := "❌"
+		if user.IsAuthorized {
+			status = "✅"
+		}
+		adminStatus := ""
+		if user.IsAdmin {
+			adminStatus = "👑"
+		}
+		username := user.Username
+		if username == "" {
+			username = "N/A"
+		}
+		// Do not escape here, Telegram will parse MarkdownV2 if ParseMode is set
+		msg.WriteString(fmt.Sprintf("%d\\. `ID:%d` %s %s (`@%s`) - Auth: %s Admin: %s\n",
+			offset+i+1, user.UserID, user.FirstName, user.LastName, username, status, adminStatus))
+	}
+
+	totalPages := (totalUsers + pageSize - 1) / pageSize
+	msg.WriteString(fmt.Sprintf("\nPage *%d* of *%d* \\(%d total users\\)", page, totalPages, totalUsers))
+
+	markup := &tg.ReplyInlineMarkup{}
+	var buttons []tg.KeyboardButtonClass
+	if page > 1 {
+		buttons = append(buttons, &tg.KeyboardButtonCallback{
+			Text: "⬅️ Prev",
+			Data: []byte(fmt.Sprintf("%s,%d", callbackListUsers, page-1)),
+		})
+	}
+	if page < totalPages {
+		buttons = append(buttons, &tg.KeyboardButtonCallback{
+			Text: "Next ➡️",
+			Data: []byte(fmt.Sprintf("%s,%d", callbackListUsers, page+1)),
+		})
+	}
+	if len(buttons) > 0 {
+		markup.Rows = append(markup.Rows, tg.KeyboardButtonRow{Buttons: buttons})
+	}
+
+	// Correct way to send styled text with ctx.Reply using ParseMode
+	_, err = ctx.Reply(u, ext.ReplyTextString(msg.String()), &ext.ReplyOpts{
+		Markup: markup,
+	})
+	return err
+}
+
+// handleUserInfo retrieves detailed information about a specific user.
+func (b *TelegramBot) handleUserInfo(ctx *ext.Context, u *ext.Update) error {
+	adminID := u.EffectiveUser().ID
+	userInfo, err := b.userRepository.GetUserInfo(adminID)
+	if err != nil || !userInfo.IsAdmin {
+		return b.sendReply(ctx, u, "You are not authorized to perform this action.")
+	}
+
+	args := strings.Fields(u.EffectiveMessage.Text)
+	if len(args) < 2 {
+		return b.sendReply(ctx, u, "Usage: /userinfo <user_id>")
+	}
+	targetUserID, err := strconv.ParseInt(args[1], 10, 64)
+	if err != nil {
+		return b.sendReply(ctx, u, "Invalid user ID.")
+	}
+
+	targetUserInfo, err := b.userRepository.GetUserInfo(targetUserID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return b.sendReply(ctx, u, fmt.Sprintf("User with ID %d not found.", targetUserID))
+		}
+		b.logger.Printf("Failed to get user info for ID %d: %v", targetUserID, err)
+		return b.sendReply(ctx, u, "Error retrieving user information.")
+	}
+
+	status := "Not Authorized ❌"
+	if targetUserInfo.IsAuthorized {
+		status = "Authorized ✅"
+	}
+	adminStatus := "No 🚫"
+	if targetUserInfo.IsAdmin {
+		adminStatus = "Yes 👑"
+	}
+
+	username := targetUserInfo.Username
+	if username == "" {
+		username = "N/A"
+	}
+
+	// Do not escape here, Telegram will parse MarkdownV2 if ParseMode is set
+	msg := fmt.Sprintf(
+		"👤 *User Details:*\n"+
+			"ID: `%d`\n"+
+			"Chat ID: `%d`\n"+
+			"First Name: `%s`\n"+
+			"Last Name: `%s`\n"+
+			"Username: `@%s`\n"+
+			"Status: *%s*\n"+
+			"Admin: *%s*\n"+
+			"Joined: `%s`",
+		targetUserInfo.UserID,
+		targetUserInfo.ChatID,
+		targetUserInfo.FirstName,
+		targetUserInfo.LastName,
+		username,
+		status,
+		adminStatus,
+		targetUserInfo.CreatedAt,
+	)
+
+	// Correct way to send styled text with ctx.Reply using ParseMode
+	_, err = ctx.Reply(u, ext.ReplyTextString(msg), &ext.ReplyOpts{})
+	return err
+}
+
+// escapeMarkdownV2 escapes characters that have special meaning in Telegram MarkdownV2.
+// This function should be used for *literal* strings that are part of MarkdownV2 formatted message
+// but should NOT be interpreted as Markdown syntax.
+// If the entire message is intended to be MarkdownV2 and sent with ParseMode: "MarkdownV2",
+// then only the parts that need to be literal should be escaped.
+func escapeMarkdownV2(text string) string {
+	replacer := strings.NewReplacer(
+		"_", "\\_",
+		"*", "\\*",
+		"[", "\\[",
+		"]", "\\]",
+		"(", "\\(",
+		")", "\\)",
+		"~", "\\~",
+		"`", "\\`",
+		">", "\\>",
+		"#", "\\#",
+		"+", "\\+",
+		"-", "\\-",
+		"=", "\\=",
+		"|", "\\|",
+		"{", "\\{",
+		"}", "\\}",
+		".", "\\.",
+		"!", "\\!",
+	)
+	return replacer.Replace(text)
 }
