@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WebBridgeBot Media Player - {{.ChatID}}</title>
+    <title>WebBridgeBot Media Player - {{.User.Username}}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&display=swap" rel="stylesheet">
@@ -58,6 +58,15 @@
             font-weight: 700;
             margin: 0;
             text-shadow: 3px 3px 8px var(--shadow-dark);
+            z-index: 2;
+            position: relative;
+        }
+        
+        .user-info {
+            color: var(--subtle-text-color);
+            font-size: 1rem;
+            margin-top: 0.5rem;
+            text-align: center;
             z-index: 2;
             position: relative;
         }
@@ -162,6 +171,10 @@
             h1 {
                 font-size: 2rem;
             }
+            
+            .user-info {
+                font-size: 0.9rem;
+            }
 
             #status {
                 font-size: 1.2rem;
@@ -189,6 +202,10 @@
                 font-size: 1.7rem;
             }
 
+            .user-info {
+                font-size: 0.8rem;
+            }
+
             #status {
                 font-size: 1rem;
             }
@@ -210,8 +227,14 @@
 <body>
     <header>
         <h1>WebBridgeBot</h1>
+        <div class="user-info">
+            <span>👤 User: {{.User.FirstName}}</span>
+            {{if .User.LastName}}<span> {{.User.LastName}}</span>{{end}}
+            {{if .User.Username}}<span> (@{{.User.Username}})</span>{{end}}
+            <span> - ID: {{.User.UserID}}</span>
+        </div>
     </header>
-    <p id="status">Chat ID: {{.ChatID}}; Waiting for media...</p>
+    <p id="status">Waiting for media...</p>
 
     <main>
         <video id="videoPlayer" controls></video>
@@ -249,7 +272,7 @@
             let audioMotionInstance = null;
 
             const setupWebSocket = () => {
-                const wsAddress = `ws://${window.location.host}/ws/{{.ChatID}}`;
+                const wsAddress = `ws://${window.location.host}/ws/{{.User.ChatID}}`;
                 ws = new WebSocket(wsAddress);
 
                 ws.addEventListener('message', handleWebSocketMessage);
@@ -570,7 +593,7 @@
             const initialize = () => {
                 setupWebSocket();
                 setupEventListeners();
-                updateStatus('Chat ID: {{.ChatID}}; Waiting for media...');
+                updateStatus('Waiting for media...');
             };
 
             initialize();

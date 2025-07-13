@@ -977,7 +977,7 @@ func (b *TelegramBot) handlePlayer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := t.Execute(w, map[string]interface{}{"ChatID": chatID}); err != nil {
+	if err := t.Execute(w, map[string]interface{}{"User": userInfo}); err != nil {
 		b.logger.Printf("Error rendering template: %v", err)
 		http.Error(w, "Failed to render template", http.StatusInternalServerError)
 	}
