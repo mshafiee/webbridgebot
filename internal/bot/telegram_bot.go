@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -914,7 +915,7 @@ func (b *TelegramBot) handleStream(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create a TelegramReader to stream the content.
-	lr, err := reader.NewTelegramReader(ctx, b.tgClient, file.Location, start, end, contentLength, b.config.BinaryCache, b.logger)
+	lr, err := reader.NewTelegramReader(context.Background(), b.tgClient, file.Location, start, end, contentLength, b.config.BinaryCache, b.logger)
 	if err != nil {
 		b.logger.Printf("Error creating Telegram reader for message ID %d: %v", messageID, err)
 		http.Error(w, "Failed to initialize file stream", http.StatusInternalServerError)
