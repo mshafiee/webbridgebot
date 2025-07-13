@@ -12,36 +12,10 @@ import (
 	"time"
 )
 
-// setupTestCache is a helper function to create a new BinaryCache for tests.
-func setupTestCache(t *testing.T, maxCacheSize, fixedChunkSize int64) (*BinaryCache, string) {
-	tempDir := t.TempDir()
-	cache, err := NewBinaryCache(tempDir, maxCacheSize, fixedChunkSize)
-	if err != nil {
-		t.Fatalf("Failed to initialize BinaryCache: %v", err)
-	}
-	return cache, tempDir
-}
-
-// closeCacheFiles is a helper to ensure cache files are closed.
-func closeCacheFiles(t *testing.T, cache *BinaryCache) {
-	if cache.cashFile != nil {
-		err := cache.cashFile.Close()
-		if err != nil {
-			t.Logf("Error closing cashFile: %v", err) // Log but don't fail, as it might be closed already
-		}
-	}
-	if cache.metadataFile != nil {
-		err := cache.metadataFile.Close()
-		if err != nil {
-			t.Logf("Error closing metadataFile: %v", err) // Log but don't fail
-		}
-	}
-}
-
 func TestNewBinaryCache(t *testing.T) {
 	t.Run("Basic Initialization", func(t *testing.T) {
 		cache, tempDir := setupTestCache(t, 1024, 256)
-		defer closeCacheFiles(t, cache)
+		defer closeCache(t, cache)
 
 		cacheFile := filepath.Join(tempDir, "cache.dat")
 		metadataFile := filepath.Join(tempDir, "metadata.dat")
@@ -87,7 +61,7 @@ func TestNewBinaryCache(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to initialize BinaryCache with existing metadata: %v", err)
 		}
-		defer closeCacheFiles(t, cache)
+		defer closeCache(t, cache)
 
 		if cache.cacheSize != 0 {
 			t.Errorf("Expected cacheSize to be 0 after loading empty metadata, got %d", cache.cacheSize)
@@ -101,7 +75,7 @@ func TestNewBinaryCache(t *testing.T) {
 func TestBinaryCache_WriteReadChunk(t *testing.T) {
 	t.Run("Basic Write and Read", func(t *testing.T) {
 		cache, _ := setupTestCache(t, 1024, 256)
-		defer closeCacheFiles(t, cache)
+		defer closeCache(t, cache)
 
 		// Use a simple counter for timestamps in this test
 		var counter int64
@@ -141,7 +115,7 @@ func TestBinaryCache_WriteReadChunk(t *testing.T) {
 
 	t.Run("Write and Read Chunk Smaller Than Fixed Size", func(t *testing.T) {
 		cache, _ := setupTestCache(t, 1024, 256)
-		defer closeCacheFiles(t, cache)
+		defer closeCache(t, cache)
 
 		var counter int64
 		cache.setTimestampSource(func() int64 {
@@ -174,7 +148,7 @@ func TestBinaryCache_WriteReadChunk(t *testing.T) {
 
 	t.Run("Write and Read Chunk Larger Than Fixed Size (Multiple Parts)", func(t *testing.T) {
 		cache, _ := setupTestCache(t, 1024, 256)
-		defer closeCacheFiles(t, cache)
+		defer closeCache(t, cache)
 
 		var counter int64
 		cache.setTimestampSource(func() int64 {
@@ -215,7 +189,7 @@ func TestBinaryCache_WriteReadChunk(t *testing.T) {
 
 func TestBinaryCache_ReadChunk_NotFound(t *testing.T) {
 	cache, _ := setupTestCache(t, 1024, 256)
-	defer closeCacheFiles(t, cache)
+	defer closeCache(t, cache)
 
 	var counter int64
 	cache.setTimestampSource(func() int64 {
@@ -251,7 +225,7 @@ func TestBinaryCache_ReadChunk_NotFound(t *testing.T) {
 
 func TestBinaryCache_LRU_Eviction(t *testing.T) {
 	cache, _ := setupTestCache(t, 512, 256) // Max 2 chunks (2 * 256)
-	defer closeCacheFiles(t, cache)
+	defer closeCache(t, cache)
 
 	var counter int64
 	cache.setTimestampSource(func() int64 {
@@ -308,7 +282,7 @@ func TestBinaryCache_LRU_Eviction(t *testing.T) {
 	// Check that chunk 2 was evicted (should return error)
 	_, err = cache.readChunk(1, 2)
 	if err == nil {
-		t.Error("Expected chunk 2 to be evicted, but it was not found")
+		t.Error("Expected chunk 2 to be evicted, but it was found")
 	}
 
 	// Check that chunk 1 and chunk 3 are still present
@@ -330,7 +304,7 @@ func TestBinaryCache_LRU_Eviction(t *testing.T) {
 
 func TestBinaryCache_LRU_UpdateOnRead(t *testing.T) {
 	cache, _ := setupTestCache(t, 768, 256) // Max 3 chunks
-	defer closeCacheFiles(t, cache)
+	defer closeCache(t, cache)
 
 	var counter int64
 	cache.setTimestampSource(func() int64 {
@@ -400,7 +374,7 @@ func TestBinaryCache_LRU_UpdateOnRead(t *testing.T) {
 
 func TestBinaryCache_WriteChunk_Overwrite(t *testing.T) {
 	cache, _ := setupTestCache(t, 1024, 256) // Max 4 chunks
-	defer closeCacheFiles(t, cache)
+	defer closeCache(t, cache)
 
 	var counter int64
 	cache.setTimestampSource(func() int64 {
@@ -517,13 +491,11 @@ func TestBinaryCache_MetadataPersistence(t *testing.T) {
 	}
 
 	// Access loc1, chunk1 again to make it most recently used (timestamp 3)
-	// This read will also save the metadata, which is key.
-	_, err = cache1.readChunk(loc1, chunk1) // timestamp 3 (this read also saves metadata)
+	_, err = cache1.readChunk(loc1, chunk1)
 	if err != nil {
 		t.Fatalf("Failed to read chunk1 (1st time) for LRU update: %v", err)
 	}
 
-	// Write another chunk. This will trigger a saveMetadata() *after* timestamp 3 for loc1:chunk1 is saved.
 	loc3, chunk3 := int64(300), int64(10)
 	data3 := []byte("small third chunk")         // One part
 	err = cache1.writeChunk(loc3, chunk3, data3) // timestamp 4
@@ -531,27 +503,19 @@ func TestBinaryCache_MetadataPersistence(t *testing.T) {
 		t.Fatalf("Failed to write chunk3 (1st time): %v", err)
 	}
 
-	// Before closing, check in-memory state
 	expectedCacheSize1 := 1*cache1.fixedChunkSize + 2*cache1.fixedChunkSize + 1*cache1.fixedChunkSize // 4 parts total
-	if cache1.cacheSize != expectedCacheSize1 {
-		t.Errorf("Cache1: Expected cacheSize %d, got %d", expectedCacheSize1, cache1.cacheSize)
+
+	// Close the first cache instance *gracefully* to ensure metadata is written to disk.
+	if err := cache1.Close(); err != nil {
+		t.Fatalf("Failed to close cache1: %v", err)
 	}
-	if cache1.lruQueue.Len() != 3 {
-		t.Errorf("Cache1: Expected lruQueue length 3, got %d", cache1.lruQueue.Len())
-	}
-	if len(cache1.lruMap) != 3 {
-		t.Errorf("Cache1: Expected lruMap length 3, got %d", len(cache1.lruMap))
-	}
-	closeCacheFiles(t, cache1) // Explicitly close
 
 	// 2. Re-open the cache and verify state
-	// Do NOT set timestampSource for cache2, and do NOT perform readChunk operations,
-	// as that would alter the LRU state before verification.
 	cache2, err := NewBinaryCache(tempDir, 2048, 256)
 	if err != nil {
 		t.Fatalf("Failed to reinitialize BinaryCache (2nd time): %v", err)
 	}
-	defer closeCacheFiles(t, cache2)
+	defer closeCache(t, cache2)
 
 	// Verify loaded cache size
 	if cache2.cacheSize != expectedCacheSize1 {
@@ -571,7 +535,7 @@ func TestBinaryCache_MetadataPersistence(t *testing.T) {
 	//
 	// Order (oldest first): loc2:chunk2 (T2), loc1:chunk1 (T3), loc3:chunk3 (T4)
 	if cache2.lruQueue.Len() != 3 {
-		t.Errorf("Cache2: Expected loaded lruQueue length 3, got %d", cache2.lruQueue.Len())
+		t.Fatalf("Cache2: Expected loaded lruQueue length 3, got %d", cache2.lruQueue.Len())
 	}
 	if len(cache2.lruMap) != 3 {
 		t.Errorf("Cache2: Expected loaded lruMap length 3, got %d", len(cache2.lruMap))
@@ -596,7 +560,7 @@ func TestBinaryCache_MetadataPersistence(t *testing.T) {
 
 func TestBinaryCache_ConcurrentAccess(t *testing.T) {
 	cache, _ := setupTestCache(t, 2*1024*1024, 256*1024) // 2MB cache, 256KB fixed chunks
-	defer closeCacheFiles(t, cache)
+	defer closeCache(t, cache)
 
 	// For concurrent access, use the real timestamp source, as it's testing concurrency
 	// not deterministic LRU order after restart. No need for artificial sleeps here as well.

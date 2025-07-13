@@ -9,59 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gotd/td/bin"
 	"github.com/gotd/td/tg"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
-
-// --- Mocks & Test Setup ---
-
-// mockInvoker is a mock of the bin.Invoker interface, which is the lowest level of API call execution.
-type mockInvoker struct {
-	mock.Mock
-}
-
-// Invoke mocks the RPC call. It checks the input type and provides a canned response.
-func (m *mockInvoker) Invoke(ctx context.Context, input bin.Encoder, output bin.Decoder) error {
-	// The `Called` method tracks the call and returns the configured values.
-	args := m.Called(ctx, input, output)
-	err := args.Error(1)
-	if err != nil {
-		return err
-	}
-
-	// If a response object is configured, encode it into the `output` decoder.
-	if resp := args.Get(0); resp != nil {
-		if respEncoder, ok := resp.(bin.Encoder); ok {
-			var b bin.Buffer
-			if err := respEncoder.Encode(&b); err != nil {
-				return err
-			}
-			// The output is a pointer to the expected result struct, so we decode into it.
-			return output.Decode(&b)
-		}
-	}
-	return nil
-}
-
-// mockTGClient is a mock that implements the telegramClient interface from reader.go.
-type mockTGClient struct {
-	api *tg.Client
-}
-
-func (m *mockTGClient) API() *tg.Client {
-	return m.api
-}
-
-// generateTestData creates a byte slice of a given size with predictable content.
-func generateTestData(size int) []byte {
-	data := make([]byte, size)
-	for i := 0; i < size; i++ {
-		data[i] = byte(i % 256)
-	}
-	return data
-}
 
 // TestTelegramReader_ReadLogic verifies the data assembly logic of the Read method,
 // including handling of unaligned starts and ends, by mocking the chunk fetching layer.
@@ -186,11 +137,10 @@ func TestTelegramReader_CachingAndRetries(t *testing.T) {
 		client := &mockTGClient{api: mockedTgClient}
 
 		cache, _ := setupTestCache(t, 1024*1024, preferredChunkSize)
-		defer closeCacheFiles(t, cache)
+		defer closeCache(t, cache)
 
 		// --- First Read (Cache Miss) ---
 		// Expect one call to the API.
-		// FIX: The Type field must not be nil. Use the correct case 'Png'.
 		apiResponse := &tg.UploadFile{Type: &tg.StorageFilePng{}, Bytes: testData}
 		invoker.On("Invoke", mock.Anything, mock.Anything, mock.Anything).Return(apiResponse, nil).Once()
 
@@ -217,11 +167,10 @@ func TestTelegramReader_CachingAndRetries(t *testing.T) {
 		client := &mockTGClient{api: mockedTgClient}
 
 		cache, _ := setupTestCache(t, 1024*1024, preferredChunkSize)
-		defer closeCacheFiles(t, cache)
+		defer closeCache(t, cache)
 
 		// Setup mock to fail twice with a transient error, then succeed.
 		transientErr := syscall.ECONNRESET
-		// FIX: The Type field must not be nil for the successful response. Use the correct case 'Png'.
 		apiResponse := &tg.UploadFile{Type: &tg.StorageFilePng{}, Bytes: testData}
 		invoker.On("Invoke", mock.Anything, mock.Anything, mock.Anything).Return(nil, transientErr).Twice()
 		invoker.On("Invoke", mock.Anything, mock.Anything, mock.Anything).Return(apiResponse, nil).Once()

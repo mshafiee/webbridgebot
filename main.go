@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
 	"webBridgeBot/internal/bot"
 	"webBridgeBot/internal/config" // Import config package
 
@@ -18,38 +21,52 @@ func main() {
 	logger := log.New(os.Stdout, "webBridgeBot: ", log.Ldate|log.Ltime|log.Lshortfile)
 
 	// 1. Initialize Viper: Read from environment variables and .env file.
-	// This happens *before* Cobra parses flags, so flags will take precedence.
 	config.InitializeViper(logger)
 
 	rootCmd := &cobra.Command{
 		Use:   "webBridgeBot",
 		Short: "WebBridgeBot",
-		// PersistentPreRunE is called before the Run function of any command (root or sub).
-		// It's the ideal place to bind flags to Viper.
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			// 2. Bind Cobra flags to Viper:
-			// This tells Viper to consider command-line flags as a configuration source.
-			// Flags will typically override values from environment variables or config files.
 			return viper.BindPFlags(cmd.Flags())
 		},
 		Run: func(cmd *cobra.Command, args []string) {
-			// 3. Load final configuration:
-			// config.LoadConfig will now pull the *resolved* values from Viper's internal state,
-			// which includes values set by flags, environment variables, or the .env file.
+			// 3. Load final configuration (which now also initializes the cache).
 			cfg = config.LoadConfig(logger)
+
+			// The BinaryCache now has a background worker. We must ensure it's closed properly.
+			defer func() {
+				logger.Println("Closing binary cache...")
+				if err := cfg.BinaryCache.Close(); err != nil {
+					logger.Printf("Error closing binary cache: %v", err)
+				}
+			}()
 
 			b, err := bot.NewTelegramBot(&cfg, logger)
 			if err != nil {
 				log.Fatalf("Error initializing Telegram bot: %v", err)
 			}
 
-			b.Run()
+			// Setup graceful shutdown
+			ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+			defer stop()
+
+			// Run the bot in a separate goroutine so we can listen for shutdown signals.
+			go func() {
+				b.Run()
+				// If b.Run() returns (e.g., due to an unrecoverable error),
+				// we signal the main function to stop.
+				stop()
+			}()
+
+			logger.Println("Bot is running. Press Ctrl+C to exit.")
+			<-ctx.Done() // Block here until a signal is received
+
+			logger.Println("Shutdown signal received, initiating graceful shutdown...")
+			// The deferred cache close will now be executed.
 		},
 	}
 
 	// 4. Define Cobra flags:
-	// Use the pointer to the package-level `cfg` to allow Cobra to populate them.
-	// Provide default values directly in the flag definitions.
 	rootCmd.Flags().IntVar(&cfg.ApiID, "api_id", 0, "Telegram API ID (required)")
 	rootCmd.Flags().StringVar(&cfg.ApiHash, "api_hash", "", "Telegram API Hash (required)")
 	rootCmd.Flags().StringVar(&cfg.BotToken, "bot_token", "", "Telegram Bot Token (required)")

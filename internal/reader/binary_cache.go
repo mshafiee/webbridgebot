@@ -41,6 +41,11 @@ type BinaryCache struct {
 	evictionList    []int64             // List of OFFSETS available for reuse
 	fixedChunkSize  int64
 	timestampSource func() int64 // Function to get current timestamp for testability
+
+	// Fields for asynchronous metadata saving
+	saveQueue chan struct{}
+	closeChan chan struct{}
+	wg        sync.WaitGroup
 }
 
 // LRUItem represents an item in the LRU cache with its priority.
@@ -134,7 +139,9 @@ func NewBinaryCache(cacheDir string, maxCacheSize int64, fixedChunkSize int64) (
 		lruMap:          make(map[string]*LRUItem),
 		evictionList:    []int64{},
 		fixedChunkSize:  fixedChunkSize,
-		timestampSource: time.Now().UnixNano, // Default to real-time clock
+		timestampSource: time.Now().UnixNano,    // Default to real-time clock
+		saveQueue:       make(chan struct{}, 1), // Buffered channel of size 1
+		closeChan:       make(chan struct{}),
 	}
 
 	// Load metadata from the metadata file if it exists
@@ -150,7 +157,30 @@ func NewBinaryCache(cacheDir string, maxCacheSize int64, fixedChunkSize int64) (
 		return nil, err
 	}
 
+	// Start the background goroutine for saving metadata
+	bc.wg.Add(1)
+	go bc.processSaves()
+
 	return bc, nil
+}
+
+// Close gracefully shuts down the BinaryCache, ensuring pending metadata is saved.
+func (bc *BinaryCache) Close() error {
+	close(bc.closeChan) // Signal the background worker to stop
+	bc.wg.Wait()        // Wait for the background worker to finish
+
+	var errs []error
+	if err := bc.cashFile.Close(); err != nil {
+		errs = append(errs, fmt.Errorf("closing cache file: %w", err))
+	}
+	if err := bc.metadataFile.Close(); err != nil {
+		errs = append(errs, fmt.Errorf("closing metadata file: %w", err))
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("errors while closing cache: %v", errs)
+	}
+	return nil
 }
 
 // setTimestampSource is a helper for testing to inject a mock timestamp generator.
@@ -225,7 +255,9 @@ func (bc *BinaryCache) writeChunk(locationID int64, chunkID int64, chunk []byte)
 	locationChunks[chunkID] = newChunkMetas
 	bc.addLRU(locationID, chunkID, timestamp)
 
-	return bc.saveMetadata()
+	// Trigger an asynchronous save
+	bc.requestSave()
+	return nil
 }
 
 // getWriteOffset gets an offset for writing a chunk part, reusing an evicted slot or appending to the end.
@@ -285,7 +317,6 @@ func (bc *BinaryCache) readChunk(locationID int64, chunkID int64) ([]byte, error
 		bc.metadata[locationID][chunkID][i].Timestamp = timestamp
 	}
 
-
 	return chunk, nil
 }
 
@@ -341,8 +372,6 @@ func (bc *BinaryCache) evictIfNeeded() {
 
 		locationChunks, locExists := bc.metadata[item.locationID]
 		if !locExists {
-			// This can happen if a location was removed by a prior operation,
-			// leaving a stale entry in the LRU queue.
 			continue
 		}
 
@@ -353,35 +382,76 @@ func (bc *BinaryCache) evictIfNeeded() {
 			}
 			delete(locationChunks, item.chunkID)
 
-			// If the location map becomes empty after deleting the last chunk, remove it too.
 			if len(locationChunks) == 0 {
 				delete(bc.metadata, item.locationID)
 			}
-		} else {
-			// This indicates an inconsistency: item popped from LRU but not in metadata.
-			// This scenario should ideally not happen if add/remove logic is symmetric.
 		}
 	}
 }
 
-// saveMetadata saves metadata to the metadata file.
-// This format stores logical chunks, each with their part count and then parts' metadata.
-func (bc *BinaryCache) saveMetadata() error {
+// requestSave sends a non-blocking request to the save queue.
+func (bc *BinaryCache) requestSave() {
+	select {
+	case bc.saveQueue <- struct{}{}:
+		// Request sent successfully.
+	default:
+		// Queue is full, a save is already pending. Do nothing.
+	}
+}
+
+// processSaves is the background worker that handles debounced metadata saving.
+func (bc *BinaryCache) processSaves() {
+	defer bc.wg.Done()
+	const debounceDuration = 2 * time.Second
+	var timer *time.Timer
+
+	for {
+		select {
+		case <-bc.saveQueue:
+			// A save has been requested. Reset the timer to wait for more potential updates.
+			if timer != nil {
+				timer.Stop()
+			}
+			timer = time.NewTimer(debounceDuration)
+		case <-bc.closeChan:
+			// The cache is closing.
+			if timer != nil {
+				timer.Stop()
+			}
+			fmt.Println("Shutting down cache... performing final metadata save.")
+			bc.saveMetadataInternal()
+			return
+		case <-func() <-chan time.Time {
+			if timer == nil {
+				return nil // Block forever if timer is not set
+			}
+			return timer.C
+		}():
+			// The timer fired, so it's time to save.
+			fmt.Println("Debounce timer fired, saving metadata...")
+			bc.saveMetadataInternal()
+			timer = nil // Mark timer as inactive
+		}
+	}
+}
+
+// saveMetadataInternal performs the actual synchronous saving of metadata to disk.
+func (bc *BinaryCache) saveMetadataInternal() {
 	bc.metadataLock.Lock()
 	defer bc.metadataLock.Unlock()
 
 	_, err := bc.metadataFile.Seek(0, os.SEEK_SET)
 	if err != nil {
-		return err
+		fmt.Printf("Error seeking metadata file: %v\n", err)
+		return
 	}
 
-	// Clear the metadata file before saving new data.
 	err = bc.metadataFile.Truncate(0)
 	if err != nil {
-		return err
+		fmt.Printf("Error truncating metadata file: %v\n", err)
+		return
 	}
 
-	// Collect all logical chunk metadata into a slice for deterministic sorting.
 	type LogicalChunkData struct {
 		LocationID int64
 		ChunkID    int64
@@ -399,7 +469,6 @@ func (bc *BinaryCache) saveMetadata() error {
 		}
 	}
 
-	// Sort logical chunks for deterministic writing, which is crucial for testing.
 	sort.Slice(allLogicalChunks, func(i, j int) bool {
 		if allLogicalChunks[i].LocationID != allLogicalChunks[j].LocationID {
 			return allLogicalChunks[i].LocationID < allLogicalChunks[j].LocationID
@@ -408,51 +477,36 @@ func (bc *BinaryCache) saveMetadata() error {
 	})
 
 	totalLogicalChunks := int64(len(allLogicalChunks))
-	err = binary.Write(bc.metadataFile, binary.LittleEndian, totalLogicalChunks)
-	if err != nil {
-		return err
+	if err := binary.Write(bc.metadataFile, binary.LittleEndian, totalLogicalChunks); err != nil {
+		fmt.Printf("Error writing total chunk count to metadata: %v\n", err)
+		return
 	}
 
 	for _, lChunk := range allLogicalChunks {
-		err := binary.Write(bc.metadataFile, binary.LittleEndian, lChunk.LocationID)
-		if err != nil {
-			return err
+		if err := binary.Write(bc.metadataFile, binary.LittleEndian, lChunk.LocationID); err != nil {
+			fmt.Printf("Error writing LocationID to metadata: %v\n", err)
+			return
 		}
-		err = binary.Write(bc.metadataFile, binary.LittleEndian, lChunk.ChunkID)
-		if err != nil {
-			return err
+		if err := binary.Write(bc.metadataFile, binary.LittleEndian, lChunk.ChunkID); err != nil {
+			fmt.Printf("Error writing ChunkID to metadata: %v\n", err)
+			return
 		}
-		// Number of parts for this logical chunk
-		err = binary.Write(bc.metadataFile, binary.LittleEndian, int64(len(lChunk.Metas)))
-		if err != nil {
-			return err
+		if err := binary.Write(bc.metadataFile, binary.LittleEndian, int64(len(lChunk.Metas))); err != nil {
+			fmt.Printf("Error writing part count to metadata: %v\n", err)
+			return
 		}
 
 		for _, meta := range lChunk.Metas {
-			err := binary.Write(bc.metadataFile, binary.LittleEndian, meta.LocationID)
-			if err != nil {
-				return err
-			}
-			err = binary.Write(bc.metadataFile, binary.LittleEndian, meta.ChunkIndex)
-			if err != nil {
-				return err
-			}
-			err = binary.Write(bc.metadataFile, binary.LittleEndian, meta.Offset)
-			if err != nil {
-				return err
-			}
-			err = binary.Write(bc.metadataFile, binary.LittleEndian, meta.Size)
-			if err != nil {
-				return err
-			}
-			err = binary.Write(bc.metadataFile, binary.LittleEndian, meta.Timestamp)
-			if err != nil {
-				return err
+			if err := binary.Write(bc.metadataFile, binary.LittleEndian, &meta); err != nil {
+				fmt.Printf("Error writing chunk part metadata: %v\n", err)
+				return
 			}
 		}
 	}
 
-	return bc.metadataFile.Sync()
+	if err := bc.metadataFile.Sync(); err != nil {
+		fmt.Printf("Error syncing metadata file: %v\n", err)
+	}
 }
 
 // loadMetadata loads metadata from the metadata file.
@@ -465,7 +519,6 @@ func (bc *BinaryCache) loadMetadata() error {
 		return err
 	}
 
-	// If file is empty or likely corrupted, reinitialize.
 	if fileInfo.Size() == 0 {
 		return bc.initializeFile()
 	}
@@ -478,20 +531,16 @@ func (bc *BinaryCache) loadMetadata() error {
 	var totalLogicalChunks int64
 	err = binary.Read(bc.metadataFile, binary.LittleEndian, &totalLogicalChunks)
 	if err != nil {
-		// If reading the initial count fails, assume corrupted and reinitialize.
 		return bc.initializeFile()
 	}
 
-	// Reset in-memory metadata and LRU structures before loading.
 	bc.metadata = make(map[int64]map[int64][]chunkMetadata)
 	bc.cacheSize = 0
 	bc.lruQueue = &PriorityQueue{}
 	bc.lruMap = make(map[string]*LRUItem)
 
 	for i := int64(0); i < totalLogicalChunks; i++ {
-		var locationID int64
-		var chunkID int64
-		var partCount int64
+		var locationID, chunkID, partCount int64
 
 		if err := binary.Read(bc.metadataFile, binary.LittleEndian, &locationID); err != nil {
 			return fmt.Errorf("failed to read locationID for logical chunk %d: %w", i, err)
@@ -508,23 +557,11 @@ func (bc *BinaryCache) loadMetadata() error {
 
 		for p := int64(0); p < partCount; p++ {
 			var meta chunkMetadata
-			if err := binary.Read(bc.metadataFile, binary.LittleEndian, &meta.LocationID); err != nil {
-				return fmt.Errorf("failed to read part metadata (locID) for part %d of logical chunk %d: %w", p, i, err)
-			}
-			if err := binary.Read(bc.metadataFile, binary.LittleEndian, &meta.ChunkIndex); err != nil {
-				return fmt.Errorf("failed to read part metadata (chunkIndex) for part %d of logical chunk %d: %w", p, i, err)
-			}
-			if err := binary.Read(bc.metadataFile, binary.LittleEndian, &meta.Offset); err != nil {
-				return fmt.Errorf("failed to read part metadata (offset) for part %d of logical chunk %d: %w", p, i, err)
-			}
-			if err := binary.Read(bc.metadataFile, binary.LittleEndian, &meta.Size); err != nil {
-				return fmt.Errorf("failed to read part metadata (size) for part %d of logical chunk %d: %w", p, i, err)
-			}
-			if err := binary.Read(bc.metadataFile, binary.LittleEndian, &meta.Timestamp); err != nil {
-				return fmt.Errorf("failed to read part metadata (timestamp) for part %d of logical chunk %d: %w", p, i, err)
+			if err := binary.Read(bc.metadataFile, binary.LittleEndian, &meta); err != nil {
+				return fmt.Errorf("failed to read part metadata for part %d of logical chunk %d: %w", p, i, err)
 			}
 
-			if p == 0 { // Use timestamp of the first part for the logical chunk's LRU.
+			if p == 0 {
 				chunkTimestamp = meta.Timestamp
 			}
 			metasForLogicalChunk[p] = meta
@@ -538,36 +575,26 @@ func (bc *BinaryCache) loadMetadata() error {
 		bc.addLRU(locationID, chunkID, chunkTimestamp)
 	}
 
-	// CRITICAL FIX: Initialize the heap after loading all elements to ensure heap property.
 	heap.Init(bc.lruQueue)
-
 	return nil
 }
 
 // initializeFile clears and sets up an empty metadata file.
 func (bc *BinaryCache) initializeFile() error {
-	err := bc.metadataFile.Truncate(0)
-	if err != nil {
+	if err := bc.metadataFile.Truncate(0); err != nil {
 		return err
 	}
-
-	_, err = bc.metadataFile.Seek(0, os.SEEK_SET)
-	if err != nil {
+	if _, err := bc.metadataFile.Seek(0, os.SEEK_SET); err != nil {
 		return err
 	}
-
 	var numLogicalChunks int64 = 0
-	err = binary.Write(bc.metadataFile, binary.LittleEndian, numLogicalChunks)
-	if err != nil {
+	if err := binary.Write(bc.metadataFile, binary.LittleEndian, numLogicalChunks); err != nil {
 		return err
 	}
-
-	// Reset in-memory metadata and LRU structures.
 	bc.metadata = make(map[int64]map[int64][]chunkMetadata)
 	bc.cacheSize = 0
 	bc.lruQueue = &PriorityQueue{}
 	bc.lruMap = make(map[string]*LRUItem)
 	heap.Init(bc.lruQueue)
-
 	return bc.metadataFile.Sync()
 }
