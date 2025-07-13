@@ -1,164 +1,241 @@
 # WebBridgeBot
 
-**WebBridgeBot** is a Telegram bot designed to bridge the gap between Telegram media content and web browsers. By forwarding video, audio, and photo files to WebBridgeBot, users can generate a web URL that hosts a webpage. This webpage communicates with WebBridgeBot via WebSocket, allowing for instant playback of the media in a web browser. This seamless integration makes it easier than ever to enjoy Telegram media on various devices such as TVs, game consoles, and web kiosks.
+WebBridgeBot is a Telegram bot that acts as a bridge between Telegram and your web browser. It allows you to forward any video, audio, or photo file to the bot and instantly receive a private link. This link opens a web-based media player that streams the content directly from the bot, enabling seamless playback on devices like TVs, game consoles, or any modern web browser.
 
-## Features
+---
 
-- **Real-time WebSocket Communication:** Instantaneous interaction between the Telegram bot and the web interface, ensuring real-time playback of media files.
-- **Stream Media Directly from Telegram:** Download and stream audio and video files from Telegram chats directly to a web interface.
-- **User-friendly Web Interface:** Access and play media files through a simple and intuitive web interface, compatible with most modern devices.
-- **Easy Navigation from Telegram:** Effortlessly navigate to the web interface using commands within Telegram.
-- **Efficient Streaming with Partial Content Delivery:** Supports efficient file streaming with partial content delivery, allowing for responsive playback.
+### ✨ Features
 
-## Prerequisites
+- **Direct Media Streaming:** Stream videos, music, and photos from Telegram directly to a web interface without needing to download them first.
+- **Instant Playback:** Utilizes WebSockets for real-time communication between the bot and the web player, allowing for instant media loading and control.
+- **Responsive Web Player:** A clean, modern web interface that works on desktops, tablets, and mobile devices. Includes a visualizer for audio files.
+- **Secure User Management:** Features a robust authorization system. The first user becomes an admin, who can then authorize or grant admin rights to other users.
+- **Efficient Caching:** Caches downloaded file chunks on disk to reduce redundant downloads from Telegram and provide faster access to frequently played media.
+- **Partial Content Streaming:** Supports HTTP range requests, allowing browsers to seek through media and stream content efficiently, which is crucial for large files.
 
-Before you start, ensure you have the following prerequisites installed on your system:
+### ⚙️ How It Works
 
-- **Docker:** Required for containerized deployment.
-- **Go (version 1.21 or newer):** Necessary for building the application as specified in the Dockerfile.
-- **Telegram API Credentials:** You need to obtain the `API ID` and `API Hash` from Telegram's [developer portal](https://my.telegram.org/).
-- **Telegram Bot Token:** You can create a new bot and obtain a bot token using [BotFather](https://t.me/BotFather) on Telegram.
+1.  **Send Media:** You forward or upload a media file (video, audio, photo) to the bot in a private chat.
+2.  **Generate Link:** The bot processes the file, generates a unique, secure URL, and sends it back to you with a control panel.
+3.  **Open Player:** You open the URL in any browser. The web page establishes a WebSocket connection back to the bot.
+4.  **Play Media:** The bot sends media information (like filename and type) to the player via WebSocket. The player then starts streaming the file content directly from the bot's server.
 
-## Admin Roles and User Authentication
+### 📋 Prerequisites
 
-### Admin Roles
+- **Docker & Docker Compose:** Required for the recommended containerized deployment.
+- **Go (1.21+):** Needed only if you plan to build the application from source manually.
+- **Telegram API Credentials:**
+    - `API ID` and `API Hash`: Obtain these from [my.telegram.org](https://my.telegram.org/).
+    - `Bot Token`: Create a bot and get the token from [@BotFather](https://t.me/BotFather) on Telegram.
 
-When the bot is first initialized, the first user who interacts with it (typically using the `/start` command) is automatically granted admin rights. Admins have the following privileges:
+### 🔑 User & Admin Management
 
-- **Authorize Users:** Admins can authorize new users, allowing them to interact with the bot. This is done using the `/authorize <user_id>` command.
-- **Grant Admin Privileges:** Admins can promote other users to admin status by adding the `admin` flag when authorizing a user (`/authorize <user_id> admin`).
-- **Receive Notifications:** Admins are notified whenever a new user interacts with the bot. This allows them to decide whether to authorize the user or not.
+The bot includes a secure authentication system to control access.
 
-### User Authentication
+-   **First Admin:** The very first user to interact with the bot (by sending `/start`) is automatically granted admin privileges.
+-   **Admin Powers:** Admins receive notifications for new users and can manage access with the following commands.
+-   **Authorization:** All subsequent users must be manually authorized by an admin before they can use the bot. Unauthorized users will be prompted to request access.
 
-WebBridgeBot includes a user authentication mechanism to ensure that only authorized users can interact with the bot and access its web interface:
+#### Admin Commands
 
-- **Automatic Authorization for the First User:** The first user to start the bot is automatically authorized and granted admin privileges.
-- **Manual Authorization:** All subsequent users must be manually authorized by an admin. This is to prevent unauthorized access to the bot's features.
-- **Unauthorized Users:** If a user who is not authorized attempts to interact with the bot, they will receive a message informing them that they need to be authorized by an admin. The bot will also notify the admins about this new user.
-- **User Information Storage:** The bot stores user information in a database, which includes whether a user is authorized and whether they have admin privileges.
+-   `/authorize <user_id>`: Authorizes a user to use the bot.
+-   `/authorize <user_id> admin`: Authorizes a user and grants them admin privileges.
+-   `/deauthorize <user_id>`: Revokes a user's access to the bot.
+-   `/listusers`: Displays a paginated list of all users and their status.
+-   `/userinfo <user_id>`: Shows detailed information for a specific user.
 
-### Commands Overview
+### 🚀 Setup & Deployment (Recommended)
 
-- **/start:** Initializes interaction with the bot. If the user is the first to start the bot, they are granted admin rights.
-- **/authorize <user_id> [admin]:** Authorizes a user to interact with the bot. If `admin` is specified, the user is granted admin rights.
-- **/deauthorize <user_id>:**  Removes authorization from a user, preventing them from interacting with the bot.
+Using Docker Compose is the easiest way to run WebBridgeBot.
 
-Admins can use these commands to control who can use the bot and manage user roles effectively.
-
-## Setup Instructions
-
-### Cloning the Repository
-
-Begin by cloning the WebBridgeBot repository to your local machine:
+**1. Clone the Repository**
 
 ```bash
 git clone https://github.com/mshafiee/webbridgebot.git
-cd webBridgeBot
+cd webbridgebot
 ```
 
-### Building WebBridgeBot
+**2. Create a `.env` file**
 
-Once you have all dependencies in place, build the WebBridgeBot application:
-
-```bash
-make webBridgeBot
-```
-
-This command compiles the `webBridgeBot` Go application, creating an executable that can be run on your system.
-
-### Running WebBridgeBot with Docker
-
-To build and run the WebBridgeBot Docker container, use the following commands:
-
-```bash
-docker build -t webbridgebot:latest .
-docker run -p 8080:8080 \
--e "API_ID=your_api_id" \
--e "API_HASH=your_api_hash" \
--e "BOT_TOKEN=your_bot_token" \
--e "BASE_URL=http://example.com" \
-webbridgebot:latest
-```
-
-Replace `your_api_id`, `your_api_hash`, and `your_bot_token` with your actual Telegram credentials. Also, adjust `http://example.com` to match the URL where your WebBridgeBot instance will be accessible.
-
-### Running WebBridgeBot with Docker Compose
-
-For a simpler and more streamlined deployment, use Docker Compose to manage the WebBridgeBot service. This approach allows for easier management of environment variables and port mappings.
-
-#### 1. Create a .env File
-
-First, create a `.env` file in the root directory of the project with your Telegram credentials and other necessary configurations:
+Create a file named `.env` in the project's root directory and paste the following content. Replace the placeholder values with your actual credentials.
 
 ```plaintext
-# .env file content
-API_ID=123456
-API_HASH=abcdef1234567890abcdef1234567890
-BOT_TOKEN=123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11
+# .env - Telegram API Configuration
+API_ID=1234567
+API_HASH=a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4
+BOT_TOKEN=1234567890:ABC-DEF1234ghIkl-zyx57W2v1u123ew11
+
+# Web Server and URL Configuration
+# Replace localhost with your server's IP or domain name if it's publicly accessible
 BASE_URL=http://localhost:8080
 PORT=8080
+
+# (Optional) Cache Configuration
+HASH_LENGTH=8
+MAX_CACHE_SIZE=10737418240 # 10 GB in bytes
 CACHE_DIRECTORY=.cache
 ```
 
-Make sure to replace the placeholders with your actual data.
+**3. Run with Docker Compose**
 
-#### 2. Running with Docker Compose
-
-To start the WebBridgeBot service using Docker Compose, navigate to the project's root directory and execute:
+Start the bot in the background:
 
 ```bash
 docker-compose up -d
 ```
 
-This command builds the Docker image (if not already built) and starts the container in the background. To view the logs of your service, use:
+-   **View logs:** `docker-compose logs -f`
+-   **Stop the bot:** `docker-compose down`
+
+### 🔧 Environment Variables
+
+These variables can be set in the `.env` file or directly in your environment.
+
+| Variable          | Description                                                    | Default           | Required |
+| ----------------- | -------------------------------------------------------------- | ----------------- | -------- |
+| `API_ID`          | Your Telegram API ID.                                          | -                 | **Yes**  |
+| `API_HASH`        | Your Telegram API Hash.                                        | -                 | **Yes**  |
+| `BOT_TOKEN`       | The token for your Telegram bot.                               | -                 | **Yes**  |
+| `BASE_URL`        | The public URL where the bot's web player will be hosted.      | `http://localhost:8080` | **Yes**  |
+| `PORT`            | The port on which the web server will run.                     | `8080`            | No       |
+| `HASH_LENGTH`     | The length of the short hash used in media URLs.               | `8`               | No       |
+| `MAX_CACHE_SIZE`  | Maximum size for the disk cache in bytes.                      | `10737418240` (10GB) | No       |
+| `CACHE_DIRECTORY` | The directory to store cached media chunks and the database.   | `.cache`          | No       |
+| `DEBUG_MODE`      | Set to `true` to enable verbose logging.                       | `false`           | No       |
+
+### 🤝 Contributing
+
+We welcome contributions! Please feel free to fork the repository, create a feature branch, and submit a pull request. Check the issues tab for ideas on how to help.
+
+### 📄 License
+
+WebBridgeBot is licensed under the **GNU General Public License v3.0**. See the `LICENSE` file for more details.
+
+### 🛠️ Troubleshooting
+
+-   **Check Environment Variables:** Ensure all required variables (`API_ID`, `API_HASH`, `BOT_TOKEN`, `BASE_URL`) are correctly set in your `.env` file.
+-   **Review Logs:** Use `docker-compose logs -f` to check for any errors during startup or operation.
+-   **Permissions:** Make sure the `.cache` directory has the correct write permissions for the Docker container. Docker Compose handles this with volumes, but it's a common issue in other setups.
+
+---
+
+## نسخه فارسی (Persian Version)
+
+# WebBridgeBot
+
+پروژه WebBridgeBot یک ربات تلگرامی است که به عنوان پلی بین تلگرام و مرورگر وب شما عمل می‌کند. این ربات به شما امکان می‌دهد هر فایل ویدیویی، صوتی یا تصویری را به آن ارسال کرده و فوراً یک لینک خصوصی دریافت کنید. این لینک یک پخش‌کننده رسانه مبتنی بر وب را باز می‌کند که محتوا را مستقیماً از ربات استریم کرده و امکان پخش یکپارچه بر روی دستگاه‌هایی مانند تلویزیون، کنسول‌های بازی یا هر مرورگر وب مدرنی را فراهم می‌کند.
+
+---
+
+### ✨ ویژگی‌ها
+
+- **استریم مستقیم رسانه:** ویدیوها، موسیقی و تصاویر را مستقیماً از تلگرام به یک رابط وب استریم کنید، بدون نیاز به دانلود اولیه.
+- **پخش فوری:** از وب‌سوکت (WebSocket) برای ارتباط لحظه‌ای بین ربات و پخش‌کننده وب استفاده می‌کند که امکان بارگذاری و کنترل فوری رسانه را فراهم می‌کند.
+- **پخش‌کننده وب واکنش‌گرا:** یک رابط وب تمیز و مدرن که بر روی دسکتاپ، تبلت و دستگاه‌های موبایل کار می‌کند. شامل یک ویژوالایزر برای فایل‌های صوتی.
+- **مدیریت امن کاربران:** دارای یک سیستم مجوزدهی قوی است. اولین کاربر به عنوان ادمین شناخته شده و می‌تواند به کاربران دیگر مجوز دسترسی یا سطح ادمین بدهد.
+- **کش (Cache) کارآمد:** تکه‌های فایل دانلود شده را بر روی دیسک کش می‌کند تا دانلودهای تکراری از تلگرام کاهش یافته و دسترسی سریع‌تری به رسانه‌های پرتکرار فراهم شود.
+- **پخش بخشی از محتوا:** از درخواست‌های محدوده HTTP (Range Requests) پشتیبانی می‌کند که به مرورگرها اجازه می‌دهد در فایل‌های رسانه جابجا شوند و محتوا را به طور کارآمد استریم کنند، که برای فایل‌های بزرگ حیاتی است.
+
+### ⚙️ نحوه کار
+
+1.  **ارسال رسانه:** شما یک فایل رسانه (ویدیو، صوت، عکس) را به ربات در یک چت خصوصی ارسال یا فوروارد می‌کنید.
+2.  **ایجاد لینک:** ربات فایل را پردازش کرده، یک URL منحصربه‌فرد و امن ایجاد می‌کند و آن را به همراه یک پنل کنترل برای شما ارسال می‌کند.
+3.  **باز کردن پخش‌کننده:** شما URL را در هر مرورگری باز می‌کنید. صفحه وب یک اتصال وب‌سوکت به ربات برقرار می‌کند.
+4.  **پخش رسانه:** ربات اطلاعات رسانه (مانند نام فایل و نوع) را از طریق وب‌سوکت به پخش‌کننده ارسال می‌کند. سپس پخش‌کننده شروع به استریم محتوای فایل مستقیماً از سرور ربات می‌کند.
+
+### 📋 پیش‌نیازها
+
+- **داکر و داکر کامپوز (Docker & Docker Compose):** برای راه‌اندازی پیشنهادی به صورت کانتینری مورد نیاز است.
+- **زبان Go (نسخه 1.21 به بالا):** تنها در صورتی که قصد دارید برنامه را به صورت دستی از سورس کامپایل کنید، لازم است.
+- **اطلاعات API تلگرام:**
+    - `API ID` و `API Hash`: این مقادیر را از [my.telegram.org](https://my.telegram.org/) دریافت کنید.
+    - `توکن ربات (Bot Token)`: یک ربات جدید در [@BotFather](https://t.me/BotFather) در تلگرام ایجاد کرده و توکن آن را دریافت کنید.
+
+### 🔑 مدیریت کاربران و ادمین
+
+این ربات شامل یک سیستم احراز هویت امن برای کنترل دسترسی است.
+
+-   **اولین ادمین:** اولین کاربری که با ربات تعامل می‌کند (با ارسال دستور `/start`) به طور خودکار اختیارات ادمین را دریافت می‌کند.
+-   **اختیارات ادمین:** ادمین‌ها اعلان‌هایی برای کاربران جدید دریافت کرده و می‌توانند با دستورات زیر دسترسی‌ها را مدیریت کنند.
+-   **مجوزدهی:** تمام کاربران بعدی باید به صورت دستی توسط یک ادمین تأیید شوند تا بتوانند از ربات استفاده کنند. از کاربران غیرمجاز خواسته می‌شود تا درخواست دسترسی دهند.
+
+#### دستورات ادمین
+
+-   `/authorize <user_id>`: به یک کاربر مجوز استفاده از ربات را می‌دهد.
+-   `/authorize <user_id> admin`: به یک کاربر مجوز استفاده داده و او را به سطح ادمین ارتقا می‌دهد.
+-   `/deauthorize <user_id>`: دسترسی یک کاربر به ربات را لغو می‌کند.
+-   `/listusers`: لیستی صفحه‌بندی شده از تمام کاربران و وضعیت آن‌ها را نمایش می‌دهد.
+-   `/userinfo <user_id>`: اطلاعات دقیقی در مورد یک کاربر خاص نمایش می‌دهد.
+
+### 🚀 نصب و راه‌اندازی (روش پیشنهادی)
+
+استفاده از داکر کامپوز ساده‌ترین راه برای اجرای WebBridgeBot است.
+
+**۱. کلون کردن مخزن**
 
 ```bash
-docker-compose logs -f
+git clone https://github.com/mshafiee/webbridgebot.git
+cd webbridgebot
 ```
 
-To stop and remove the containers, use:
+**۲. ایجاد فایل `.env`**
+
+فایلی با نام `.env` در ریشه پروژه ایجاد کرده و محتوای زیر را در آن کپی کنید. مقادیر پیش‌فرض را با اطلاعات واقعی خود جایگزین کنید.
+
+```plaintext
+# .env - پیکربندی API تلگرام
+API_ID=1234567
+API_HASH=a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4
+BOT_TOKEN=1234567890:ABC-DEF1234ghIkl-zyx57W2v1u123ew11
+
+# پیکربندی سرور وب و URL
+# اگر سرور شما به صورت عمومی در دسترس است، localhost را با IP یا دامنه سرور خود جایگزین کنید
+BASE_URL=http://localhost:8080
+PORT=8080
+
+# (اختیاری) پیکربندی کش
+HASH_LENGTH=8
+MAX_CACHE_SIZE=10737418240 # 10 گیگابایت به بایت
+CACHE_DIRECTORY=.cache
+```
+
+**۳. اجرا با داکر کامپوز**
+
+ربات را در پس‌زمینه اجرا کنید:
 
 ```bash
-docker-compose down
+docker-compose up -d
 ```
 
-## Environment Variables
+-   **مشاهده لاگ‌ها:** `docker-compose logs -f`
+-   **متوقف کردن ربات:** `docker-compose down`
 
-The WebBridgeBot uses several environment variables that must be configured properly:
+### 🔧 متغیرهای محیطی
 
-- **API_ID:** Your Telegram API ID.
-- **API_HASH:** Your Telegram API Hash.
-- **BOT_TOKEN:** The token for your Telegram bot.
-- **BASE_URL:** The base URL where the bot's web interface will be hosted.
-- **PORT:** The port on which the web server will run.
-- **CACHE_DIRECTORY:** The directory where cached files will be stored.
+این متغیرها می‌توانند در فایل `.env` یا مستقیماً در محیط شما تنظیم شوند.
 
-## Contributing
+| متغیر            | توضیحات                                                        | پیش‌فرض          | الزامی  |
+| ----------------- | --------------------------------------------------------------- | ----------------- | -------- |
+| `API_ID`          | شناسه API تلگرام شما.                                          | -                 | **بله**  |
+| `API_HASH`        | هش API تلگرام شما.                                             | -                 | **بله**  |
+| `BOT_TOKEN`       | توکن ربات تلگرام شما.                                          | -                 | **بله**  |
+| `BASE_URL`        | URL عمومی که پخش‌کننده وب ربات در آن میزبانی می‌شود.           | `http://localhost:8080` | **بله**  |
+| `PORT`            | پورتی که سرور وب بر روی آن اجرا می‌شود.                          | `8080`            | خیر      |
+| `HASH_LENGTH`     | طول هش کوتاه استفاده شده در URLهای رسانه.                      | `8`               | خیر      |
+| `MAX_CACHE_SIZE`  | حداکثر حجم کش دیسک به بایت.                                     | `10737418240` (10GB) | خیر      |
+| `CACHE_DIRECTORY` | دایرکتوری برای ذخیره تکه‌های رسانه کش شده و پایگاه داده.         | `.cache`          | خیر      |
+| `DEBUG_MODE`      | برای فعال کردن لاگ‌های کامل، `true` تنظیم کنید.                   | `false`           | خیر      |
 
-We welcome contributions to the WebBridgeBot project! To contribute:
+### 🤝 مشارکت
 
-1. Fork the repository.
-2. Create a new branch with your feature or bugfix.
-3. Submit a pull request with a clear description of your changes.
+از مشارکت شما استقبال می‌کنیم! لطفاً مخزن را فورک کرده، یک شاخه برای ویژگی یا رفع اشکال خود ایجاد کنید و یک درخواست ادغام (pull request) با توضیحات واضح از تغییرات خود ارسال کنید. برای یافتن ایده‌هایی برای کمک، به بخش issues مراجعه کنید.
 
-Check the issues tab for ways you can help make WebBridgeBot even better.
+### 📄 مجوز
 
-## License
+پروژه WebBridgeBot تحت **مجوز عمومی همگانی گنو نسخه ۳.۰ (GNU General Public License v3.0)** منتشر شده است. برای جزئیات بیشتر به فایل `LICENSE` مراجعه کنید.
 
-WebBridgeBot is licensed under the GNU General Public License v3.0. See the [LICENSE](LICENSE) file for more details.
+### 🛠️ عیب‌یابی
 
-## Troubleshooting
-
-If you encounter issues during setup or while running the bot, consider the following steps:
-
-- **Ensure all environment variables are correctly set.**
-- **Check Docker and Docker Compose versions:** Make sure you are using compatible versions.
-- **Review logs:** Use `docker-compose logs -f` to review the output logs for any errors or warnings.
-- **Update Dependencies:** Regularly update dependencies to their latest versions to avoid compatibility issues.
-
-For further assistance, please open an issue on the GitHub repository.
-
-## Contact
-
-For any questions or feedback, you can reach out to the maintainers through GitHub or Telegram.
+-   **بررسی متغیرهای محیطی:** اطمینان حاصل کنید که تمام متغیرهای مورد نیاز (`API_ID`, `API_HASH`, `BOT_TOKEN`, `BASE_URL`) به درستی در فایل `.env` شما تنظیم شده‌اند.
+-   **بررسی لاگ‌ها:** از دستور `docker-compose logs -f` برای بررسی هرگونه خطا در هنگام راه‌اندازی یا عملکرد استفاده کنید.
+-   **مجوزها (Permissions):** مطمئن شوید که دایرکتوری `.cache` دارای مجوزهای نوشتن صحیح برای کانتینر داکر است. داکر کامپوز این مورد را با volumeها مدیریت می‌کند، اما این یک مشکل رایج در تنظیمات دیگر است.
