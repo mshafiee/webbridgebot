@@ -280,17 +280,11 @@ func (bc *BinaryCache) readChunk(locationID int64, chunkID int64) ([]byte, error
 	bc.updateLRU(locationID, chunkID, timestamp)
 
 	// Propagate the new timestamp to the actual metadata stored in bc.metadata.
-	// This ensures the LRU state is persisted correctly across restarts.
+	// This ensures the LRU state is persisted correctly if a writeChunk operation later saves it.
 	for i := range bc.metadata[locationID][chunkID] {
 		bc.metadata[locationID][chunkID][i].Timestamp = timestamp
 	}
 
-	// Persist the updated timestamps to disk immediately after a read that updates LRU
-	// to ensure consistency if the process crashes before another write occurs.
-	err := bc.saveMetadata()
-	if err != nil {
-		return nil, fmt.Errorf("failed to save updated metadata after read: %w", err)
-	}
 
 	return chunk, nil
 }
