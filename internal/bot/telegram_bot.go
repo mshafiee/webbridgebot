@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"syscall"
 	"webBridgeBot/internal/data"
 	"webBridgeBot/internal/reader"
 
@@ -939,7 +941,13 @@ func (b *TelegramBot) handleStream(w http.ResponseWriter, r *http.Request) {
 
 	// Stream the content to the client.
 	if _, err := io.Copy(w, lr); err != nil {
-		b.logger.Printf("Error streaming content for message ID %d: %v", messageID, err)
+		// These errors are expected if the client disconnects (e.g., closes tab, seeks video).
+		// We log them differently to reduce noise from non-critical errors.
+		if errors.Is(err, syscall.EPIPE) || errors.Is(err, syscall.ECONNRESET) {
+			b.logger.Printf("Client disconnected during stream for message ID %d. Error: %v", messageID, err)
+		} else {
+			b.logger.Printf("Error streaming content for message ID %d: %v", messageID, err)
+		}
 		// Headers might already be sent, so just log the error.
 	}
 }
