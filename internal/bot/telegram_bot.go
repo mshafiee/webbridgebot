@@ -410,18 +410,18 @@ func (b *TelegramBot) handleMediaMessages(ctx *ext.Context, u *ext.Update) error
 	}
 
 	// If a log channel is configured, forward the message there.
-	if b.config.LogChannelID != 0 {
+	if b.config.LogChannelID != "" && b.config.LogChannelID != "0" {
 		go func() { // Run in a goroutine to not block the user response.
 			fromChatID := u.EffectiveChat().GetID()
 			messageID := u.EffectiveMessage.Message.ID
 
 			updates, err := utils.ForwardMessages(ctx, fromChatID, b.config.LogChannelID, messageID)
 			if err != nil {
-				b.logger.Printf("Failed to forward message %d from chat %d to log channel %d: %v", messageID, fromChatID, b.config.LogChannelID, err)
+				b.logger.Printf("Failed to forward message %d from chat %d to log channel %s: %v", messageID, fromChatID, b.config.LogChannelID, err)
 				return // Can't proceed if forwarding failed.
 			}
 
-			b.logger.Printf("Successfully forwarded message %d from chat %d to log channel %d", messageID, fromChatID, b.config.LogChannelID)
+			b.logger.Printf("Successfully forwarded message %d from chat %d to log channel %s", messageID, fromChatID, b.config.LogChannelID)
 
 			// Find the ID of the message just forwarded to the log channel
 			var newMsgID int
@@ -462,26 +462,21 @@ func (b *TelegramBot) handleMediaMessages(ctx *ext.Context, u *ext.Update) error
 			)
 
 			// Get the peer for the log channel to send the reply.
-			logChannelPeer, err := utils.GetLogChannelPeer(ctx, ctx.Raw, ctx.PeerStorage, b.config.LogChannelID)
+			logChannelPeer, err := utils.GetLogChannelPeer(ctx, b.config.LogChannelID)
 			if err != nil {
-				b.logger.Printf("Failed to get log channel peer %d to send reply: %v", b.config.LogChannelID, err)
+				b.logger.Printf("Failed to get log channel peer %s to send reply: %v", b.config.LogChannelID, err)
 				return
-			}
-
-			logChannelPeerInput := &tg.InputPeerChannel{
-				ChannelID:  logChannelPeer.ChannelID,
-				AccessHash: logChannelPeer.AccessHash,
 			}
 
 			// Send the informational message as a reply to the forwarded media using the raw API.
 			_, err = ctx.Raw.MessagesSendMessage(ctx, &tg.MessagesSendMessageRequest{
-				Peer:     logChannelPeerInput,
+				Peer:     logChannelPeer,
 				Message:  infoMsg,
 				ReplyTo:  &tg.InputReplyToMessage{ReplyToMsgID: newMsgID},
 				RandomID: rand.Int63(),
 			})
 			if err != nil {
-				b.logger.Printf("Failed to send user info to log channel %d as reply: %v", b.config.LogChannelID, err)
+				b.logger.Printf("Failed to send user info to log channel %s as reply: %v", b.config.LogChannelID, err)
 			}
 		}()
 	}

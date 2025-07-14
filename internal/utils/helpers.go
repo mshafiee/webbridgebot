@@ -2,7 +2,6 @@ package utils
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math/rand"
 	"strconv"
@@ -12,7 +11,6 @@ import (
 
 	"github.com/celestix/gotgproto"
 	"github.com/celestix/gotgproto/ext"
-	"github.com/celestix/gotgproto/storage"
 	"github.com/gotd/td/tg"
 )
 
@@ -74,58 +72,48 @@ func FileFromMedia(media tg.MessageMediaClass) (*types.DocumentFile, error) {
 
 		return &types.DocumentFile{
 			ID:       document.ID,
-			Location: document.AsInputDocumentFileLocation(), // tg.InputDocumentFileLocation implements tg.InputFileLocationClass
+			Location: document.AsInputDocumentFileLocation(),
 			FileSize: document.Size,
 			FileName: fileName,
 			MimeType: document.MimeType,
-			Width:    videoWidth,    // Corrected field name
-			Height:   videoHeight,   // Corrected field name
-			Duration: videoDuration, // Corrected field name
+			Width:    videoWidth,
+			Height:   videoHeight,
+			Duration: videoDuration,
 		}, nil
-
 	case *tg.MessageMediaPhoto:
 		photo, ok := media.Photo.AsNotEmpty()
 		if !ok {
 			return nil, fmt.Errorf("photo is empty or not a valid type")
 		}
-
 		var (
-			largestSize     *tg.PhotoSize // Will store the actual PhotoSize object
+			largestSize     *tg.PhotoSize
 			largestWidth    int
 			largestHeight   int
-			largestFileSize int64 // Store the size of this specific largest PhotoSize
+			largestFileSize int64
 		)
-
-		// Iterate to find the largest *actual* PhotoSize that has a size
 		for _, size := range photo.GetSizes() {
 			if s, ok := size.(*tg.PhotoSize); ok {
-				if s.W > largestWidth { // Prioritize larger dimensions
+				if s.W > largestWidth {
 					largestWidth = s.W
 					largestHeight = s.H
-					largestSize = s                 // Store the PhotoSize object
-					largestFileSize = int64(s.Size) // Store its size
+					largestSize = s
+					largestFileSize = int64(s.Size)
 				}
 			}
-			// Ignoring PhotoStrippedSize and PhotoCachedSize as they are typically small previews.
 		}
-
 		if largestSize == nil {
 			return nil, fmt.Errorf("no suitable full-size photo found for streaming")
 		}
-
-		// Construct InputPhotoFileLocation using the selected PhotoSize's type for ThumbSize
 		photoFileLocation := &tg.InputPhotoFileLocation{
 			ID:            photo.ID,
 			AccessHash:    photo.AccessHash,
 			FileReference: photo.FileReference,
-			ThumbSize:     largestSize.GetType(), // Use the type of the largest size as ThumbSize
+			ThumbSize:     largestSize.GetType(),
 		}
-
-		// Determine a filename and mimetype for photos.
-		fileName := fmt.Sprintf("photo_%d.jpg", photo.ID) // Default filename
-		mimeType := "image/jpeg"                          // Common mime type for photos from Telegram
+		fileName := fmt.Sprintf("photo_%d.jpg", photo.ID)
+		mimeType := "image/jpeg"
 		if largestSize != nil {
-			switch largestSize.GetType() { // Attempt to infer mime type from photo size type
+			switch largestSize.GetType() {
 			case "j":
 				mimeType = "image/jpeg"
 			case "p":
@@ -136,18 +124,16 @@ func FileFromMedia(media tg.MessageMediaClass) (*types.DocumentFile, error) {
 				mimeType = "image/gif"
 			}
 		}
-
 		return &types.DocumentFile{
 			ID:       photo.ID,
-			Location: photoFileLocation, // tg.InputPhotoFileLocation implements tg.InputFileLocationClass
-			FileSize: largestFileSize,   // Use the size of the chosen largest PhotoSize
+			Location: photoFileLocation,
+			FileSize: largestFileSize,
 			FileName: fileName,
 			MimeType: mimeType,
 			Width:    largestWidth,
 			Height:   largestHeight,
-			Duration: 0, // Photos have no duration
+			Duration: 0,
 		}, nil
-
 	default:
 		return nil, fmt.Errorf("unsupported media type: %T", media)
 	}
@@ -168,23 +154,19 @@ func FileFromMessage(ctx context.Context, client *gotgproto.Client, messageID in
 	if err != nil {
 		return nil, err
 	}
-	err = cache.GetCache().Set(
-		key,
-		file,
-		3600,
-	)
+	err = cache.GetCache().Set(key, file, 3600)
 	if err != nil {
 		return nil, err
 	}
 	return file, nil
 }
 
-func ForwardMessages(ctx *ext.Context, fromChatId, logChannelID int64, messageID int) (*tg.Updates, error) {
+func ForwardMessages(ctx *ext.Context, fromChatId int64, logChannelIdentifier string, messageID int) (*tg.Updates, error) {
 	fromPeer := ctx.PeerStorage.GetInputPeerById(fromChatId)
 	if fromPeer.Zero() {
 		return nil, fmt.Errorf("fromChatId: %d is not a valid peer", fromChatId)
 	}
-	toPeer, err := GetLogChannelPeer(ctx, ctx.Raw, ctx.PeerStorage, logChannelID)
+	toPeer, err := GetLogChannelPeer(ctx, logChannelIdentifier)
 	if err != nil {
 		return nil, err
 	}
@@ -192,7 +174,7 @@ func ForwardMessages(ctx *ext.Context, fromChatId, logChannelID int64, messageID
 		RandomID: []int64{rand.Int63()},
 		FromPeer: fromPeer,
 		ID:       []int{messageID},
-		ToPeer:   &tg.InputPeerChannel{ChannelID: toPeer.ChannelID, AccessHash: toPeer.AccessHash},
+		ToPeer:   toPeer,
 	})
 	if err != nil {
 		return nil, err
@@ -200,69 +182,41 @@ func ForwardMessages(ctx *ext.Context, fromChatId, logChannelID int64, messageID
 	return update.(*tg.Updates), nil
 }
 
-func GetLogChannelPeer(ctx context.Context, api *tg.Client, peerStorage *storage.PeerStorage, logChannelID int64) (*tg.InputChannel, error) {
-	cachedInputPeer := peerStorage.GetInputPeerById(logChannelID)
-
-	switch peer := cachedInputPeer.(type) {
-	case *tg.InputPeerEmpty:
-		break // Cache miss, proceed to fetch from API.
-	case *tg.InputPeerChannel:
-		return &tg.InputChannel{
-			ChannelID:  peer.ChannelID,
-			AccessHash: peer.AccessHash,
-		}, nil
-	default:
-		// A peer was found but it's not a channel, which is an error for a log channel.
-		return nil, fmt.Errorf("log channel ID %d resolved to an unexpected peer type: %T", logChannelID, peer)
-	}
-
-	// If here, it's a cache miss. Fetch from API.
-	// The logChannelID from config is likely a "marked" ID, e.g., -100xxxxxxxxxx.
-	// The API's `channels.getChannels` call requires the bare channel ID.
-	var bareChannelID int64
-	if logChannelID < 0 {
-		s := fmt.Sprintf("%d", logChannelID)
-		if strings.HasPrefix(s, "-100") {
-			bareIDStr := s[4:] // Strip the "-100" prefix
-			parsedID, err := strconv.ParseInt(bareIDStr, 10, 64)
-			if err != nil {
-				return nil, fmt.Errorf("could not parse bare channel ID from %d: %w", logChannelID, err)
+// ResolveChannelPeer resolves a peer identifier to a channel peer.
+func ResolveChannelPeer(ctx *ext.Context, identifier string) (tg.InputPeerClass, error) {
+	if id, err := strconv.ParseInt(identifier, 10, 64); err == nil {
+		peer := ctx.PeerStorage.GetInputPeerById(id)
+		if !peer.Zero() {
+			switch peer.(type) {
+			case *tg.InputPeerChannel, *tg.InputPeerChannelFromMessage:
+				return peer, nil
 			}
-			bareChannelID = parsedID
-		} else {
-			// This handles other negative IDs, like for legacy group chats, which are not channels.
-			// This should be treated as an error for a log *channel*.
-			return nil, fmt.Errorf("unsupported negative ID format for a channel: %d", logChannelID)
 		}
-	} else {
-		// Positive IDs are assumed to be bare channel IDs already.
-		bareChannelID = logChannelID
 	}
-
-	inputChannel := &tg.InputChannel{
-		ChannelID: bareChannelID,
+	username := identifier
+	if strings.HasPrefix(username, "@") {
+		username = strings.TrimPrefix(username, "@")
 	}
-
-	channels, err := api.ChannelsGetChannels(ctx, []tg.InputChannelClass{inputChannel})
+	resolved, err := ctx.Raw.ContactsResolveUsername(context.Background(), &tg.ContactsResolveUsernameRequest{Username: username})
 	if err != nil {
-		return nil, fmt.Errorf("api.ChannelsGetChannels failed for channel %d: %w", bareChannelID, err)
+		return nil, fmt.Errorf("failed to resolve username '%s': %w", username, err)
 	}
-
-	if len(channels.GetChats()) == 0 {
-		return nil, errors.New("no channels found")
+	for _, chat := range resolved.Chats {
+		if channel, ok := chat.(*tg.Channel); ok {
+			inputPeer := &tg.InputPeerChannel{
+				ChannelID:  channel.ID,
+				AccessHash: channel.AccessHash,
+			}
+			return inputPeer, nil
+		}
 	}
+	return nil, fmt.Errorf("no channel found for identifier '%s'", identifier)
+}
 
-	channel, ok := channels.GetChats()[0].(*tg.Channel)
-	if !ok {
-		return nil, fmt.Errorf("expected *tg.Channel, but got %T", channels.GetChats()[0])
+func GetLogChannelPeer(ctx *ext.Context, logChannelIdentifier string) (tg.InputPeerClass, error) {
+	peer, err := ResolveChannelPeer(ctx, logChannelIdentifier)
+	if err != nil {
+		return nil, fmt.Errorf("could not resolve log channel peer '%s': %w", logChannelIdentifier, err)
 	}
-
-	// Get username to store in peer storage
-	username, _ := channel.GetUsername()
-
-	// When adding the peer to storage, we must use the original `logChannelID` as the key,
-	// so that subsequent calls to `peerStorage.GetInputPeerById(logChannelID)` will succeed.
-	peerStorage.AddPeer(logChannelID, channel.AccessHash, storage.TypeChannel, username)
-
-	return channel.AsInput(), nil
+	return peer, nil
 }

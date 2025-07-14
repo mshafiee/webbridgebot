@@ -10,7 +10,7 @@ HASH_LENGTH=${HASH_LENGTH:-8}
 CACHE_DIRECTORY=${CACHE_DIRECTORY:-".cache"}
 MAX_CACHE_SIZE=${MAX_CACHE_SIZE:-10737418240} # 10 GB in bytes
 DEBUG_MODE=${DEBUG_MODE:-false}
-LOG_CHANNEL_ID=${LOG_CHANNEL_ID:-0}
+LOG_CHANNEL_ID=${LOG_CHANNEL_ID:-"0"}
 
 # Execute the Go application with command-line flags
 ./webBridgeBot \
