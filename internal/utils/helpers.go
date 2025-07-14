@@ -11,10 +11,12 @@ import (
 
 	"github.com/celestix/gotgproto"
 	"github.com/celestix/gotgproto/ext"
+	"github.com/celestix/gotgproto/storage"
 	"github.com/gotd/td/tg"
 )
 
-// https://stackoverflow.com/a/70802740/15807350
+// Contains checks if a slice contains a specific element.
+// Source: https://stackoverflow.com/a/70802740/15807350
 func Contains[T comparable](s []T, e T) bool {
 	for _, v := range s {
 		if v == e {
@@ -24,7 +26,7 @@ func Contains[T comparable](s []T, e T) bool {
 	return false
 }
 
-// GetMessage fetches the message by the specified message ID
+// GetMessage fetches a message by its ID using the Telegram client.
 func GetMessage(ctx context.Context, client *gotgproto.Client, messageID int) (*tg.Message, error) {
 	// Fetch messages using the client API
 	messages, err := client.API().MessagesGetMessages(ctx, []tg.InputMessageClass{
@@ -139,6 +141,7 @@ func FileFromMedia(media tg.MessageMediaClass) (*types.DocumentFile, error) {
 	}
 }
 
+// FileFromMessage retrieves file information from a message, using cache if available.
 func FileFromMessage(ctx context.Context, client *gotgproto.Client, messageID int) (*types.DocumentFile, error) {
 	key := fmt.Sprintf("file:%d:%d", messageID, client.Self.ID)
 	var cachedMedia types.DocumentFile
@@ -161,7 +164,9 @@ func FileFromMessage(ctx context.Context, client *gotgproto.Client, messageID in
 	return file, nil
 }
 
+// ForwardMessages forwards a message from one chat to another.
 func ForwardMessages(ctx *ext.Context, fromChatId int64, logChannelIdentifier string, messageID int) (*tg.Updates, error) {
+	// Use ctx.PeerStorage.GetInputPeerById to retrieve the peer (corrected from storage.GetInputPeerById if it existed)
 	fromPeer := ctx.PeerStorage.GetInputPeerById(fromChatId)
 	if fromPeer.Zero() {
 		return nil, fmt.Errorf("fromChatId: %d is not a valid peer", fromChatId)
@@ -182,37 +187,78 @@ func ForwardMessages(ctx *ext.Context, fromChatId int64, logChannelIdentifier st
 	return update.(*tg.Updates), nil
 }
 
-// ResolveChannelPeer resolves a peer identifier to a channel peer.
+// ResolveChannelPeer resolves a peer identifier (ID or username) to a channel peer.
 func ResolveChannelPeer(ctx *ext.Context, identifier string) (tg.InputPeerClass, error) {
+	// Try parsing as a numeric ID first.
 	if id, err := strconv.ParseInt(identifier, 10, 64); err == nil {
+		// If it's a channel ID, resolve it via API to get the access hash and verify it.
+		peerInfo := ctx.PeerStorage.GetPeerById(id)
+		if peerInfo.Type == int(storage.TypeChannel) {
+			// The peerInfo.ID is the negative ID, e.g., -100123456.
+			// The actual channel ID for API calls is the positive part, e.g., 123456.
+			// And `tg.Channel.GetID()` also returns the positive ID.
+			strID := strconv.FormatInt(peerInfo.ID, 10)
+			if !strings.HasPrefix(strID, "-100") {
+				return nil, fmt.Errorf("peer %d is a channel but ID does not have '-100' prefix", peerInfo.ID)
+			}
+			bareIDStr := strings.TrimPrefix(strID, "-100")
+			bareChannelID, err := strconv.ParseInt(bareIDStr, 10, 64)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse bare channel ID from %s: %w", strID, err)
+			}
+
+			// Use the bare (positive) ID and the stored access hash for the API call.
+			resolved, err := ctx.Raw.ChannelsGetChannels(ctx, []tg.InputChannelClass{
+				&tg.InputChannel{ChannelID: bareChannelID, AccessHash: peerInfo.AccessHash},
+			})
+			if err != nil {
+				return nil, fmt.Errorf("failed to resolve channel ID %d (bare: %d): %w", id, bareChannelID, err)
+			}
+
+			var chats []tg.ChatClass
+			switch r := resolved.(type) {
+			case *tg.MessagesChats:
+				chats = r.GetChats()
+			case *tg.MessagesChatsSlice:
+				chats = r.GetChats()
+			default:
+				return nil, fmt.Errorf("unexpected type from ChannelsGetChannels: %T", resolved)
+			}
+
+			for _, chat := range chats {
+				if ch, ok := chat.(*tg.Channel); ok && ch.GetID() == bareChannelID {
+					return ch.AsInputPeer(), nil
+				}
+			}
+			return nil, fmt.Errorf("channel ID %d resolved but could not find matching chat entity", id)
+		}
+
+		// For non-channel peers, use ctx.PeerStorage.GetInputPeerById (corrected from storage.GetInputPeerById if it existed)
 		peer := ctx.PeerStorage.GetInputPeerById(id)
 		if !peer.Zero() {
-			switch peer.(type) {
-			case *tg.InputPeerChannel, *tg.InputPeerChannelFromMessage:
-				return peer, nil
-			}
+			return peer, nil
 		}
 	}
+
+	// If not a numeric ID, treat it as a username.
 	username := identifier
 	if strings.HasPrefix(username, "@") {
 		username = strings.TrimPrefix(username, "@")
 	}
-	resolved, err := ctx.Raw.ContactsResolveUsername(context.Background(), &tg.ContactsResolveUsernameRequest{Username: username})
+	resolved, err := ctx.Raw.ContactsResolveUsername(ctx, &tg.ContactsResolveUsernameRequest{Username: username})
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve username '%s': %w", username, err)
 	}
+	// Look for a channel in the resolved chats.
 	for _, chat := range resolved.Chats {
 		if channel, ok := chat.(*tg.Channel); ok {
-			inputPeer := &tg.InputPeerChannel{
-				ChannelID:  channel.ID,
-				AccessHash: channel.AccessHash,
-			}
-			return inputPeer, nil
+			return channel.AsInputPeer(), nil
 		}
 	}
 	return nil, fmt.Errorf("no channel found for identifier '%s'", identifier)
 }
 
+// GetLogChannelPeer resolves the log channel peer using the identifier.
 func GetLogChannelPeer(ctx *ext.Context, logChannelIdentifier string) (tg.InputPeerClass, error) {
 	peer, err := ResolveChannelPeer(ctx, logChannelIdentifier)
 	if err != nil {
