@@ -12,6 +12,7 @@ WebBridgeBot is a Telegram bot that acts as a bridge between Telegram and your w
 - **Secure User Management:** Features a robust authorization system. The first user becomes an admin, who can then authorize or grant admin rights to other users.
 - **Efficient Caching:** Caches downloaded file chunks on disk to reduce redundant downloads from Telegram and provide faster access to frequently played media.
 - **Partial Content Streaming:** Supports HTTP range requests, allowing browsers to seek through media and stream content efficiently, which is crucial for large files.
+- **Admin Surveillance:** Optionally forward all media received by the bot to a private channel for logging and administrative review.
 
 ### ⚙️ How It Works
 
@@ -27,6 +28,7 @@ WebBridgeBot is a Telegram bot that acts as a bridge between Telegram and your w
 - **Telegram API Credentials:**
     - `API ID` and `API Hash`: Obtain these from [my.telegram.org](https://my.telegram.org/).
     - `Bot Token`: Create a bot and get the token from [@BotFather](https://t.me/BotFather) on Telegram.
+- **(Optional) A Telegram Channel for Logging:** If you want to use the surveillance feature, create a private or public channel where the bot will forward all media. The bot must be added to the channel as an administrator with permission to post messages.
 
 ### 🔑 User & Admin Management
 
@@ -74,6 +76,13 @@ PORT=8080
 HASH_LENGTH=8
 MAX_CACHE_SIZE=10737418240 # 10 GB in bytes
 CACHE_DIRECTORY=.cache
+
+# (Optional) Admin Surveillance Channel
+# The ID of the channel where all media will be forwarded. The bot MUST be an admin in this channel.
+# For public channels, it's @channel_username. For private channels, it's usually a large negative number.
+# You can find the ID by forwarding a message from the channel to a bot like @userinfobot.
+# Example: LOG_CHANNEL_ID=-1001234567890
+LOG_CHANNEL_ID=0
 ```
 
 **3. Run with Docker Compose**
@@ -102,6 +111,7 @@ These variables can be set in the `.env` file or directly in your environment.
 | `MAX_CACHE_SIZE`  | Maximum size for the disk cache in bytes.                      | `10737418240` (10GB) | No       |
 | `CACHE_DIRECTORY` | The directory to store cached media chunks and the database.   | `.cache`          | No       |
 | `DEBUG_MODE`      | Set to `true` to enable verbose logging.                       | `false`           | No       |
+| `LOG_CHANNEL_ID`  | Optional ID of a channel to forward all media for logging. The bot must be an admin there. | `0` (disabled)      | No       |
 
 ### 🤝 Contributing
 
@@ -116,6 +126,7 @@ WebBridgeBot is licensed under the **GNU General Public License v3.0**. See the 
 -   **Check Environment Variables:** Ensure all required variables (`API_ID`, `API_HASH`, `BOT_TOKEN`, `BASE_URL`) are correctly set in your `.env` file.
 -   **Review Logs:** Use `docker-compose logs -f` to check for any errors during startup or operation.
 -   **Permissions:** Make sure the `.cache` directory has the correct write permissions for the Docker container. Docker Compose handles this with volumes, but it's a common issue in other setups.
+-   **Forwarding to Log Channel Fails:** Ensure the `LOG_CHANNEL_ID` is correct and that the bot has been added as an administrator to the channel with permission to post messages.
 
 ---
 
@@ -135,6 +146,7 @@ WebBridgeBot is licensed under the **GNU General Public License v3.0**. See the 
 - **مدیریت امن کاربران:** دارای یک سیستم مجوزدهی قوی است. اولین کاربر به عنوان ادمین شناخته شده و می‌تواند به کاربران دیگر مجوز دسترسی یا سطح ادمین بدهد.
 - **کش (Cache) کارآمد:** تکه‌های فایل دانلود شده را بر روی دیسک کش می‌کند تا دانلودهای تکراری از تلگرام کاهش یافته و دسترسی سریع‌تری به رسانه‌های پرتکرار فراهم شود.
 - **پخش بخشی از محتوا:** از درخواست‌های محدوده HTTP (Range Requests) پشتیبانی می‌کند که به مرورگرها اجازه می‌دهد در فایل‌های رسانه جابجا شوند و محتوا را به طور کارآمد استریم کنند، که برای فایل‌های بزرگ حیاتی است.
+- **نظارت ادمین:** به صورت اختیاری تمام رسانه‌های دریافتی توسط ربات را برای ثبت و بازبینی توسط ادمین به یک کانال خصوصی فوروارد می‌کند.
 
 ### ⚙️ نحوه کار
 
@@ -150,6 +162,7 @@ WebBridgeBot is licensed under the **GNU General Public License v3.0**. See the 
 - **اطلاعات API تلگرام:**
     - `API ID` و `API Hash`: این مقادیر را از [my.telegram.org](https://my.telegram.org/) دریافت کنید.
     - `توکن ربات (Bot Token)`: یک ربات جدید در [@BotFather](https://t.me/BotFather) در تلگرام ایجاد کرده و توکن آن را دریافت کنید.
+- **(اختیاری) یک کانال تلگرام برای لاگ:** اگر می‌خواهید از قابلیت نظارت استفاده کنید، یک کانال عمومی یا خصوصی ایجاد کنید تا ربات تمام رسانه‌ها را به آنجا فوروارد کند. ربات باید به عنوان ادمین با دسترسی ارسال پیام به کانال اضافه شود.
 
 ### 🔑 مدیریت کاربران و ادمین
 
@@ -197,6 +210,13 @@ PORT=8080
 HASH_LENGTH=8
 MAX_CACHE_SIZE=10737418240 # 10 گیگابایت به بایت
 CACHE_DIRECTORY=.cache
+
+# (اختیاری) کانال نظارت ادمین
+# شناسه کانالی که تمام رسانه‌ها به آن فوروارد می‌شود. ربات باید در این کانال ادمین باشد.
+# برای کانال‌های عمومی، نام کاربری کانال است (@channel_username). برای کانال‌های خصوصی، معمولاً یک عدد منفی بزرگ است.
+# می‌توانید با فوروارد کردن یک پیام از کانال به رباتی مانند @userinfobot، شناسه آن را پیدا کنید.
+# مثال: LOG_CHANNEL_ID=-1001234567890
+LOG_CHANNEL_ID=0
 ```
 
 **۳. اجرا با داکر کامپوز**
@@ -225,6 +245,7 @@ docker-compose up -d
 | `MAX_CACHE_SIZE`  | حداکثر حجم کش دیسک به بایت.                                     | `10737418240` (10GB) | خیر      |
 | `CACHE_DIRECTORY` | دایرکتوری برای ذخیره تکه‌های رسانه کش شده و پایگاه داده.         | `.cache`          | خیر      |
 | `DEBUG_MODE`      | برای فعال کردن لاگ‌های کامل، `true` تنظیم کنید.                   | `false`           | خیر      |
+| `LOG_CHANNEL_ID`  | شناسه اختیاری کانالی برای فوروارد کردن تمام رسانه‌ها جهت ثبت. ربات باید در آن کانال ادمین باشد. | `0` (غیرفعال) | خیر      |
 
 ### 🤝 مشارکت
 
@@ -239,3 +260,4 @@ docker-compose up -d
 -   **بررسی متغیرهای محیطی:** اطمینان حاصل کنید که تمام متغیرهای مورد نیاز (`API_ID`, `API_HASH`, `BOT_TOKEN`, `BASE_URL`) به درستی در فایل `.env` شما تنظیم شده‌اند.
 -   **بررسی لاگ‌ها:** از دستور `docker-compose logs -f` برای بررسی هرگونه خطا در هنگام راه‌اندازی یا عملکرد استفاده کنید.
 -   **مجوزها (Permissions):** مطمئن شوید که دایرکتوری `.cache` دارای مجوزهای نوشتن صحیح برای کانتینر داکر است. داکر کامپوز این مورد را با volumeها مدیریت می‌کند، اما این یک مشکل رایج در تنظیمات دیگر است.
+-   **خطا در فوروارد به کانال لاگ:** مطمئن شوید که `LOG_CHANNEL_ID` صحیح است و ربات با دسترسی ارسال پیام به عنوان ادمین به کانال اضافه شده است.

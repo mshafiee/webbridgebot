@@ -27,6 +27,7 @@ type Configuration struct {
 	DatabasePath   string
 	DebugMode      bool
 	BinaryCache    *reader.BinaryCache
+	LogChannelID   int64
 }
 
 // InitializeViper sets up Viper to read from environment variables and the .env file.
@@ -66,6 +67,7 @@ func LoadConfig(logger *log.Logger) Configuration {
 	cfg.CacheDirectory = viper.GetString("cache_directory")
 	cfg.MaxCacheSize = viper.GetInt64("max_cache_size")
 	cfg.DebugMode = viper.GetBool("debug_mode")
+	cfg.LogChannelID = viper.GetInt64("log_channel_id")
 
 	// Apply default values if not set by any source (flags, env, file)
 	setDefaultValues(&cfg)

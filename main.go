@@ -76,6 +76,7 @@ func main() {
 	rootCmd.Flags().StringVar(&cfg.CacheDirectory, "cache_directory", ".cache", "Directory to store cached files and database (default .cache)")
 	rootCmd.Flags().Int64Var(&cfg.MaxCacheSize, "max_cache_size", 10*1024*1024*1024, "Maximum cache size in bytes (default 10GB)")
 	rootCmd.Flags().BoolVar(&cfg.DebugMode, "debug_mode", false, "Enable debug logging (default false)")
+	rootCmd.Flags().Int64Var(&cfg.LogChannelID, "log_channel_id", 0, "Optional: Telegram Channel ID to forward all media to (for logging)")
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)

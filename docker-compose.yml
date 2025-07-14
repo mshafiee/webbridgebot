@@ -11,6 +11,7 @@ services:
       - PORT=${PORT}
       - HASH_LENGTH=${HASH_LENGTH}
       - MAX_CACHE_SIZE=${MAX_CACHE_SIZE}
+      - LOG_CHANNEL_ID=${LOG_CHANNEL_ID}
     ports:
       - "${PORT}:${PORT}"
     volumes:

@@ -13,10 +13,9 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"webBridgeBot/internal/config"
 	"webBridgeBot/internal/data"
 	"webBridgeBot/internal/reader"
-
-	"webBridgeBot/internal/config"
 	"webBridgeBot/internal/types"
 	"webBridgeBot/internal/utils"
 
@@ -223,10 +222,9 @@ func (b *TelegramBot) notifyAdminsAboutNewUser(newUser *tg.User, newUsersChatID 
 	var notificationMsg string
 	username, hasUsername := newUser.GetUsername()
 	if hasUsername {
-		// Do not escape here, Telegram will parse MarkdownV2 if ParseMode is set
-		notificationMsg = fmt.Sprintf("A new user has joined: *@%s* (%s %s)\nID: `%d`\n\n_Use the buttons below to manage authorization._", username, newUser.FirstName, newUser.LastName, newUser.ID)
+		notificationMsg = fmt.Sprintf("A new user has joined: *@%s* (%s %s)\nID: `%d`\n\n_Use the buttons below to manage authorization\\._", username, escapeMarkdownV2(newUser.FirstName), escapeMarkdownV2(newUser.LastName), newUser.ID)
 	} else {
-		notificationMsg = fmt.Sprintf("A new user has joined: %s %s\nID: `%d`\n\n_Use the buttons below to manage authorization._", newUser.FirstName, newUser.LastName, newUser.ID)
+		notificationMsg = fmt.Sprintf("A new user has joined: %s %s\nID: `%d`\n\n_Use the buttons below to manage authorization\\._", escapeMarkdownV2(newUser.FirstName), escapeMarkdownV2(newUser.LastName), newUser.ID)
 	}
 
 	markup := &tg.ReplyInlineMarkup{
@@ -248,11 +246,14 @@ func (b *TelegramBot) notifyAdminsAboutNewUser(newUser *tg.User, newUsersChatID 
 		}
 		b.logger.Printf("Notifying admin %d about new user %d", admin.UserID, newUser.ID)
 
-		// Directly send the message with ParseMode set to MarkdownV2
-		_, err := b.tgCtx.SendMessage(admin.ChatID, &tg.MessagesSendMessageRequest{
+		peer := b.tgCtx.PeerStorage.GetInputPeerById(admin.ChatID)
+
+		req := &tg.MessagesSendMessageRequest{
+			Peer:        peer,
 			Message:     notificationMsg,
 			ReplyMarkup: markup,
-		})
+		}
+		_, err = b.tgCtx.SendMessage(admin.ChatID, req)
 		if err != nil {
 			b.logger.Printf("Failed to notify admin %d: %v", admin.UserID, err)
 		}
@@ -298,9 +299,17 @@ func (b *TelegramBot) handleAuthorizeUser(ctx *ext.Context, u *ext.Update) error
 	// Notify the target user
 	targetUserInfo, err := b.userRepository.GetUserInfo(targetUserID)
 	if err == nil {
-		b.tgCtx.SendMessage(targetUserInfo.ChatID, &tg.MessagesSendMessageRequest{Message: fmt.Sprintf("You have been authorized%s to use WebBridgeBot!", adminMsgSuffix)})
+		peer := b.tgCtx.PeerStorage.GetInputPeerById(targetUserInfo.ChatID)
+		req := &tg.MessagesSendMessageRequest{
+			Peer:    peer,
+			Message: fmt.Sprintf("You have been authorized%s to use WebBridgeBot!", adminMsgSuffix),
+		}
+		_, err = b.tgCtx.SendMessage(targetUserInfo.ChatID, req)
+		if err != nil {
+			b.logger.Printf("Could not send notification to authorized user %d: %v", targetUserID, err)
+		}
 	} else {
-		b.logger.Printf("Could not send notification to authorized user %d: %v", targetUserID, err)
+		b.logger.Printf("Could not get user info for user %d: %v", targetUserID, err)
 	}
 
 	return b.sendReply(ctx, u, fmt.Sprintf("User %d has been authorized%s.", targetUserID, adminMsgSuffix))
@@ -339,9 +348,17 @@ func (b *TelegramBot) handleDeauthorizeUser(ctx *ext.Context, u *ext.Update) err
 	// Notify the target user
 	targetUserInfo, err := b.userRepository.GetUserInfo(targetUserID)
 	if err == nil {
-		b.tgCtx.SendMessage(targetUserInfo.ChatID, &tg.MessagesSendMessageRequest{Message: "You have been deauthorized from using WebBridgeBot."})
+		peer := b.tgCtx.PeerStorage.GetInputPeerById(targetUserInfo.ChatID)
+		req := &tg.MessagesSendMessageRequest{
+			Peer:    peer,
+			Message: "You have been deauthorized from using WebBridgeBot.",
+		}
+		_, err = b.tgCtx.SendMessage(targetUserInfo.ChatID, req)
+		if err != nil {
+			b.logger.Printf("Could not send notification to deauthorized user %d: %v", targetUserID, err)
+		}
 	} else {
-		b.logger.Printf("Could not send notification to deauthorized user %d: %v", targetUserID, err)
+		b.logger.Printf("Could not get user info for user %d: %v", targetUserID, err)
 	}
 
 	return b.sendReply(ctx, u, fmt.Sprintf("User %d has been deauthorized.", targetUserID))
@@ -351,13 +368,13 @@ func (b *TelegramBot) handleAnyUpdate(ctx *ext.Context, u *ext.Update) error {
 	// This handler is useful for debugging to see all incoming updates.
 	// Uncomment the following lines for detailed update logging:
 	/*
-		b.logger.Printf("Received update: %T", u.Update)
-		if u.EffectiveMessage != nil {
-			b.logger.Printf("Effective message from user %d in chat %d: %s", u.EffectiveUser().ID, u.EffectiveChat().GetID(), u.EffectiveMessage.Text)
-			if u.EffectiveMessage.Message.Media != nil {
-				b.logger.Printf("Media type: %T", u.EffectiveMessage.Message.Media)
-			}
-		}
+	   b.logger.Printf("Received update: %T", u.Update)
+	   if u.EffectiveMessage != nil {
+	       b.logger.Printf("Effective message from user %d in chat %d: %s", u.EffectiveUser().ID, u.EffectiveChat().GetID(), u.EffectiveMessage.Text)
+	       if u.EffectiveMessage.Message.Media != nil {
+	           b.logger.Printf("Media type: %T", u.EffectiveMessage.Message.Media)
+	       }
+	   }
 	*/
 	return nil
 }
@@ -391,6 +408,82 @@ func (b *TelegramBot) handleMediaMessages(ctx *ext.Context, u *ext.Update) error
 		return b.sendReply(ctx, u, authorizationMsg)
 	}
 
+	// If a log channel is configured, forward the message there.
+	if b.config.LogChannelID != 0 {
+		go func() { // Run in a goroutine to not block the user response.
+			fromChatID := u.EffectiveChat().GetID()
+			messageID := u.EffectiveMessage.Message.ID
+
+			updates, err := utils.ForwardMessages(ctx, fromChatID, b.config.LogChannelID, messageID)
+			if err != nil {
+				b.logger.Printf("Failed to forward message %d from chat %d to log channel %d: %v", messageID, fromChatID, b.config.LogChannelID, err)
+				return // Can't proceed if forwarding failed.
+			}
+
+			b.logger.Printf("Successfully forwarded message %d from chat %d to log channel %d", messageID, fromChatID, b.config.LogChannelID)
+
+			// Find the ID of the message just forwarded to the log channel
+			var newMsgID int
+			for _, update := range updates.GetUpdates() {
+				if newMsg, ok := update.(*tg.UpdateNewChannelMessage); ok {
+					if m, ok := newMsg.Message.(*tg.Message); ok {
+						newMsgID = m.GetID()
+						break
+					}
+				}
+			}
+
+			if newMsgID == 0 {
+				b.logger.Printf("Could not find new message ID in forward-updates for original msg %d", messageID)
+				return // Cannot send reply without the ID
+			}
+
+			// Get user info for the follow-up message.
+			userInfo, err := b.userRepository.GetUserInfo(fromChatID)
+			if err != nil {
+				b.logger.Printf("Could not get user info for user %d to send to log channel", fromChatID)
+				return
+			}
+
+			// Construct the informational message
+			var usernameDisplay string
+			if userInfo.Username != "" {
+				usernameDisplay = "@" + userInfo.Username // This will create a clickable mention.
+			} else {
+				usernameDisplay = "N/A"
+			}
+
+			infoMsg := fmt.Sprintf("Media from user:\nID: %d\nName: %s %s\nUsername: %s",
+				userInfo.UserID,
+				userInfo.FirstName,
+				userInfo.LastName,
+				usernameDisplay,
+			)
+
+			// Get the peer for the log channel to send the reply.
+			logChannelPeer, err := utils.GetLogChannelPeer(ctx, ctx.Raw, ctx.PeerStorage, b.config.LogChannelID)
+			if err != nil {
+				b.logger.Printf("Failed to get log channel peer %d to send reply: %v", b.config.LogChannelID, err)
+				return
+			}
+
+			logChannelPeerInput := &tg.InputPeerChannel{
+				ChannelID:  logChannelPeer.ChannelID,
+				AccessHash: logChannelPeer.AccessHash,
+			}
+
+			// Send the informational message as a reply to the forwarded media using the raw API.
+			_, err = ctx.Raw.MessagesSendMessage(ctx, &tg.MessagesSendMessageRequest{
+				Peer:    logChannelPeerInput,
+				Message: infoMsg,
+				ReplyTo: &tg.InputReplyToMessage{ReplyToMsgID: newMsgID},
+			})
+			if err != nil {
+				b.logger.Printf("Failed to send user info to log channel %d as reply: %v", b.config.LogChannelID, err)
+			}
+		}()
+	}
+
 	// Check if media type is supported and extract DocumentFile
 	file, err := utils.FileFromMedia(u.EffectiveMessage.Message.Media)
 	if err != nil {
@@ -414,7 +507,7 @@ func (b *TelegramBot) isUserChat(ctx *ext.Context, chatID int64) bool {
 }
 
 func (b *TelegramBot) sendReply(ctx *ext.Context, u *ext.Update, msg string) error {
-	_, err := ctx.Reply(u, ext.ReplyTextString(msg), &ext.ReplyOpts{}) // Use ReplyTextString for plain text
+	_, err := ctx.Reply(u, ext.ReplyTextString(msg), &ext.ReplyOpts{})
 	if err != nil {
 		b.logger.Printf("Failed to send reply to user: %s (ID: %d) - Error: %v", u.EffectiveUser().FirstName, u.EffectiveUser().ID, err)
 	}
@@ -422,7 +515,7 @@ func (b *TelegramBot) sendReply(ctx *ext.Context, u *ext.Update, msg string) err
 }
 
 func (b *TelegramBot) sendMediaURLReply(ctx *ext.Context, u *ext.Update, msg, webURL string) error {
-	_, err := ctx.Reply(u, ext.ReplyTextString(msg), &ext.ReplyOpts{ // Use ReplyTextString for plain text
+	_, err := ctx.Reply(u, ext.ReplyTextString(msg), &ext.ReplyOpts{
 		Markup: &tg.ReplyInlineMarkup{
 			Rows: []tg.KeyboardButtonRow{
 				{
@@ -441,7 +534,7 @@ func (b *TelegramBot) sendMediaURLReply(ctx *ext.Context, u *ext.Update, msg, we
 }
 
 func (b *TelegramBot) sendMediaToUser(ctx *ext.Context, u *ext.Update, fileURL string, file *types.DocumentFile) error {
-	_, err := ctx.Reply(u, ext.ReplyTextString(fileURL), &ext.ReplyOpts{ // Use ReplyTextString for plain text
+	_, err := ctx.Reply(u, ext.ReplyTextString(fileURL), &ext.ReplyOpts{
 		Markup: &tg.ReplyInlineMarkup{
 			Rows: []tg.KeyboardButtonRow{
 				{
@@ -620,7 +713,12 @@ func (b *TelegramBot) handleCallbackQuery(ctx *ext.Context, u *ext.Update) error
 		})
 
 		if userNotificationMessage != "" {
-			_, err := b.tgCtx.SendMessage(targetUserInfo.ChatID, &tg.MessagesSendMessageRequest{Message: userNotificationMessage})
+			peer := b.tgCtx.PeerStorage.GetInputPeerById(targetUserInfo.ChatID)
+			req := &tg.MessagesSendMessageRequest{
+				Peer:    peer,
+				Message: userNotificationMessage,
+			}
+			_, err = b.tgCtx.SendMessage(targetUserInfo.ChatID, req)
 			if err != nil {
 				b.logger.Printf("Failed to send notification to user %d: %v", targetUserID, err)
 			}
@@ -1028,7 +1126,7 @@ func (b *TelegramBot) handleListUsers(ctx *ext.Context, u *ext.Update) error {
 	}
 
 	var msg strings.Builder
-	msg.WriteString("👥 *User List*\n\n")
+	msg.WriteString("👥 User List\n\n")
 	for i, user := range users {
 		status := "❌"
 		if user.IsAuthorized {
@@ -1042,13 +1140,12 @@ func (b *TelegramBot) handleListUsers(ctx *ext.Context, u *ext.Update) error {
 		if username == "" {
 			username = "N/A"
 		}
-		// Do not escape here, Telegram will parse MarkdownV2 if ParseMode is set
-		msg.WriteString(fmt.Sprintf("%d\\. `ID:%d` %s %s (`@%s`) - Auth: %s Admin: %s\n",
+		msg.WriteString(fmt.Sprintf("%d. ID:%d %s %s (@%s) - Auth: %s Admin: %s\n",
 			offset+i+1, user.UserID, user.FirstName, user.LastName, username, status, adminStatus))
 	}
 
 	totalPages := (totalUsers + pageSize - 1) / pageSize
-	msg.WriteString(fmt.Sprintf("\nPage *%d* of *%d* \\(%d total users\\)", page, totalPages, totalUsers))
+	msg.WriteString(fmt.Sprintf("\nPage %d of %d (%d total users)", page, totalPages, totalUsers))
 
 	markup := &tg.ReplyInlineMarkup{}
 	var buttons []tg.KeyboardButtonClass
@@ -1068,7 +1165,6 @@ func (b *TelegramBot) handleListUsers(ctx *ext.Context, u *ext.Update) error {
 		markup.Rows = append(markup.Rows, tg.KeyboardButtonRow{Buttons: buttons})
 	}
 
-	// Correct way to send styled text with ctx.Reply using ParseMode
 	_, err = ctx.Reply(u, ext.ReplyTextString(msg.String()), &ext.ReplyOpts{
 		Markup: markup,
 	})
@@ -1115,17 +1211,16 @@ func (b *TelegramBot) handleUserInfo(ctx *ext.Context, u *ext.Update) error {
 		username = "N/A"
 	}
 
-	// Do not escape here, Telegram will parse MarkdownV2 if ParseMode is set
 	msg := fmt.Sprintf(
-		"👤 *User Details:*\n"+
-			"ID: `%d`\n"+
-			"Chat ID: `%d`\n"+
-			"First Name: `%s`\n"+
-			"Last Name: `%s`\n"+
-			"Username: `@%s`\n"+
-			"Status: *%s*\n"+
-			"Admin: *%s*\n"+
-			"Joined: `%s`",
+		"👤 User Details:\n"+
+			"ID: %d\n"+
+			"Chat ID: %d\n"+
+			"First Name: %s\n"+
+			"Last Name: %s\n"+
+			"Username: @%s\n"+
+			"Status: %s\n"+
+			"Admin: %s\n"+
+			"Joined: %s",
 		targetUserInfo.UserID,
 		targetUserInfo.ChatID,
 		targetUserInfo.FirstName,
@@ -1136,36 +1231,16 @@ func (b *TelegramBot) handleUserInfo(ctx *ext.Context, u *ext.Update) error {
 		targetUserInfo.CreatedAt,
 	)
 
-	// Correct way to send styled text with ctx.Reply using ParseMode
 	_, err = ctx.Reply(u, ext.ReplyTextString(msg), &ext.ReplyOpts{})
 	return err
 }
 
 // escapeMarkdownV2 escapes characters that have special meaning in Telegram MarkdownV2.
-// This function should be used for *literal* strings that are part of MarkdownV2 formatted message
-// but should NOT be interpreted as Markdown syntax.
-// If the entire message is intended to be MarkdownV2 and sent with ParseMode: "MarkdownV2",
-// then only the parts that need to be literal should be escaped.
 func escapeMarkdownV2(text string) string {
 	replacer := strings.NewReplacer(
-		"_", "\\_",
-		"*", "\\*",
-		"[", "\\[",
-		"]", "\\]",
-		"(", "\\(",
-		")", "\\)",
-		"~", "\\~",
-		"`", "\\`",
-		">", "\\>",
-		"#", "\\#",
-		"+", "\\+",
-		"-", "\\-",
-		"=", "\\=",
-		"|", "\\|",
-		"{", "\\{",
-		"}", "\\}",
-		".", "\\.",
-		"!", "\\!",
+		"_", "\\_", "*", "\\*", "[", "\\[", "]", "\\]", "(", "\\(", ")", "\\)",
+		"~", "\\~", "`", "\\`", ">", "\\>", "#", "\\#", "+", "\\+", "-", "\\-",
+		"=", "\\=", "|", "\\|", "{", "\\{", "}", "\\}", ".", "\\.", "!", "\\!",
 	)
 	return replacer.Replace(text)
 }
