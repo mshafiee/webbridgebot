@@ -9,6 +9,7 @@ import (
 	"html/template"
 	"io"
 	"log"
+	"math/rand"
 	"net/http"
 	"strconv"
 	"strings"
@@ -474,9 +475,10 @@ func (b *TelegramBot) handleMediaMessages(ctx *ext.Context, u *ext.Update) error
 
 			// Send the informational message as a reply to the forwarded media using the raw API.
 			_, err = ctx.Raw.MessagesSendMessage(ctx, &tg.MessagesSendMessageRequest{
-				Peer:    logChannelPeerInput,
-				Message: infoMsg,
-				ReplyTo: &tg.InputReplyToMessage{ReplyToMsgID: newMsgID},
+				Peer:     logChannelPeerInput,
+				Message:  infoMsg,
+				ReplyTo:  &tg.InputReplyToMessage{ReplyToMsgID: newMsgID},
+				RandomID: rand.Int63(),
 			})
 			if err != nil {
 				b.logger.Printf("Failed to send user info to log channel %d as reply: %v", b.config.LogChannelID, err)
