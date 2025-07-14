@@ -5,12 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"strconv"
+	"strings"
 	"webBridgeBot/internal/cache"
 	"webBridgeBot/internal/types"
 
-	"github.com/celestix/gotgproto/ext"
-
 	"github.com/celestix/gotgproto"
+	"github.com/celestix/gotgproto/ext"
 	"github.com/celestix/gotgproto/storage"
 	"github.com/gotd/td/tg"
 )
@@ -204,30 +205,64 @@ func GetLogChannelPeer(ctx context.Context, api *tg.Client, peerStorage *storage
 
 	switch peer := cachedInputPeer.(type) {
 	case *tg.InputPeerEmpty:
-		break
+		break // Cache miss, proceed to fetch from API.
 	case *tg.InputPeerChannel:
 		return &tg.InputChannel{
 			ChannelID:  peer.ChannelID,
 			AccessHash: peer.AccessHash,
 		}, nil
 	default:
-		return nil, errors.New("unexpected type of input peer")
+		// A peer was found but it's not a channel, which is an error for a log channel.
+		return nil, fmt.Errorf("log channel ID %d resolved to an unexpected peer type: %T", logChannelID, peer)
 	}
+
+	// If here, it's a cache miss. Fetch from API.
+	// The logChannelID from config is likely a "marked" ID, e.g., -100xxxxxxxxxx.
+	// The API's `channels.getChannels` call requires the bare channel ID.
+	var bareChannelID int64
+	if logChannelID < 0 {
+		s := fmt.Sprintf("%d", logChannelID)
+		if strings.HasPrefix(s, "-100") {
+			bareIDStr := s[4:] // Strip the "-100" prefix
+			parsedID, err := strconv.ParseInt(bareIDStr, 10, 64)
+			if err != nil {
+				return nil, fmt.Errorf("could not parse bare channel ID from %d: %w", logChannelID, err)
+			}
+			bareChannelID = parsedID
+		} else {
+			// This handles other negative IDs, like for legacy group chats, which are not channels.
+			// This should be treated as an error for a log *channel*.
+			return nil, fmt.Errorf("unsupported negative ID format for a channel: %d", logChannelID)
+		}
+	} else {
+		// Positive IDs are assumed to be bare channel IDs already.
+		bareChannelID = logChannelID
+	}
+
 	inputChannel := &tg.InputChannel{
-		ChannelID: logChannelID,
+		ChannelID: bareChannelID,
 	}
+
 	channels, err := api.ChannelsGetChannels(ctx, []tg.InputChannelClass{inputChannel})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("api.ChannelsGetChannels failed for channel %d: %w", bareChannelID, err)
 	}
+
 	if len(channels.GetChats()) == 0 {
 		return nil, errors.New("no channels found")
 	}
+
 	channel, ok := channels.GetChats()[0].(*tg.Channel)
 	if !ok {
-		return nil, errors.New("type assertion to *tg.Channel failed")
+		return nil, fmt.Errorf("expected *tg.Channel, but got %T", channels.GetChats()[0])
 	}
-	// Bruh, I literally have to call library internal functions at this point
-	peerStorage.AddPeer(channel.GetID(), channel.AccessHash, storage.TypeChannel, "")
+
+	// Get username to store in peer storage
+	username, _ := channel.GetUsername()
+
+	// When adding the peer to storage, we must use the original `logChannelID` as the key,
+	// so that subsequent calls to `peerStorage.GetInputPeerById(logChannelID)` will succeed.
+	peerStorage.AddPeer(logChannelID, channel.AccessHash, storage.TypeChannel, username)
+
 	return channel.AsInput(), nil
 }
