@@ -53,6 +53,7 @@ func GetMessage(ctx context.Context, client *gotgproto.Client, messageID int) (*
 func FileFromMedia(media tg.MessageMediaClass) (*types.DocumentFile, error) {
 	switch media := media.(type) {
 	case *tg.MessageMediaDocument:
+		// Debug: Processing document media
 		document, ok := media.Document.AsNotEmpty()
 		if !ok {
 			return nil, fmt.Errorf("document is empty or not a valid type")
@@ -60,27 +61,48 @@ func FileFromMedia(media tg.MessageMediaClass) (*types.DocumentFile, error) {
 
 		var fileName string
 		var videoWidth, videoHeight, videoDuration int
+		var audioTitle, audioPerformer string
+		var audioDuration int
+		var isVoice, isAnimation bool
+
+		// Extract metadata from document attributes
 		for _, attribute := range document.Attributes {
-			if name, ok := attribute.(*tg.DocumentAttributeFilename); ok {
-				fileName = name.FileName
+			switch attr := attribute.(type) {
+			case *tg.DocumentAttributeFilename:
+				fileName = attr.FileName
+			case *tg.DocumentAttributeVideo:
+				videoWidth = attr.W
+				videoHeight = attr.H
+				videoDuration = int(attr.Duration)
+			case *tg.DocumentAttributeAudio:
+				audioDuration = int(attr.Duration)
+				audioTitle = attr.Title
+				audioPerformer = attr.Performer
+				isVoice = attr.Voice // Voice messages have this flag set to true
+			case *tg.DocumentAttributeAnimated:
+				isAnimation = true
 			}
-			if videoAttr, ok := attribute.(*tg.DocumentAttributeVideo); ok {
-				videoWidth = videoAttr.W
-				videoHeight = videoAttr.H
-				videoDuration = int(videoAttr.Duration)
-			}
-			// tg.DocumentAttributeAudio could also be parsed if specific audio metadata is needed.
+		}
+
+		// Determine the final duration (prefer video duration, then audio duration)
+		finalDuration := videoDuration
+		if finalDuration == 0 {
+			finalDuration = audioDuration
 		}
 
 		return &types.DocumentFile{
-			ID:       document.ID,
-			Location: document.AsInputDocumentFileLocation(),
-			FileSize: document.Size,
-			FileName: fileName,
-			MimeType: document.MimeType,
-			Width:    videoWidth,
-			Height:   videoHeight,
-			Duration: videoDuration,
+			ID:          document.ID,
+			Location:    document.AsInputDocumentFileLocation(),
+			FileSize:    document.Size,
+			FileName:    fileName,
+			MimeType:    document.MimeType,
+			Width:       videoWidth,
+			Height:      videoHeight,
+			Duration:    finalDuration,
+			Title:       audioTitle,
+			Performer:   audioPerformer,
+			IsVoice:     isVoice,
+			IsAnimation: isAnimation,
 		}, nil
 	case *tg.MessageMediaPhoto:
 		photo, ok := media.Photo.AsNotEmpty()
@@ -114,17 +136,16 @@ func FileFromMedia(media tg.MessageMediaClass) (*types.DocumentFile, error) {
 		}
 		fileName := fmt.Sprintf("photo_%d.jpg", photo.ID)
 		mimeType := "image/jpeg"
-		if largestSize != nil {
-			switch largestSize.GetType() {
-			case "j":
-				mimeType = "image/jpeg"
-			case "p":
-				mimeType = "image/png"
-			case "w":
-				mimeType = "image/webp"
-			case "g":
-				mimeType = "image/gif"
-			}
+		// Determine mime type based on photo size type
+		switch largestSize.GetType() {
+		case "j":
+			mimeType = "image/jpeg"
+		case "p":
+			mimeType = "image/png"
+		case "w":
+			mimeType = "image/webp"
+		case "g":
+			mimeType = "image/gif"
 		}
 		return &types.DocumentFile{
 			ID:       photo.ID,
@@ -241,10 +262,7 @@ func ResolveChannelPeer(ctx *ext.Context, identifier string) (tg.InputPeerClass,
 	}
 
 	// If not a numeric ID, treat it as a username.
-	username := identifier
-	if strings.HasPrefix(username, "@") {
-		username = strings.TrimPrefix(username, "@")
-	}
+	username := strings.TrimPrefix(identifier, "@")
 	resolved, err := ctx.Raw.ContactsResolveUsername(ctx, &tg.ContactsResolveUsernameRequest{Username: username})
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve username '%s': %w", username, err)

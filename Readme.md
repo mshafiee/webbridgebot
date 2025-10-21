@@ -12,6 +12,7 @@ WebBridgeBot is a Telegram bot that acts as a bridge between Telegram and your w
 
 #### 🎬 Media & Streaming
 - **Universal Media Support:** Stream videos, audio files, and photos directly from Telegram to any web browser
+- **Forward Any Media:** Forward media files from any chat or channel directly to the bot for instant streaming
 - **HTTP Range Requests:** Full support for partial content streaming, enabling smooth seeking in videos and audio
 - **Intelligent Binary Cache:** LRU-based disk caching system that stores frequently accessed file chunks for instant replay
 - **Audio Visualization:** Beautiful real-time audio spectrum analyzer using AudioMotion for an immersive listening experience
@@ -167,12 +168,49 @@ We welcome contributions! Please feel free to fork the repository, create a feat
 
 WebBridgeBot is licensed under the **GNU General Public License v3.0**. See the `LICENSE` file for more details.
 
+### 🐛 Debug Mode
+
+WebBridgeBot includes a comprehensive debug logging system to help troubleshoot issues with forwarded messages and media streaming.
+
+**Enable Debug Mode:**
+
+Set `DEBUG_MODE=true` in your `.env` file or environment variables:
+
+```plaintext
+DEBUG_MODE=true
+```
+
+**Debug Logs Include:**
+
+- **Received Messages:** Complete logging of all incoming messages with sender info, text preview, media type, and forwarded status
+- **Command Reception:** Logs for all commands (/start, /authorize, /deauthorize, /listusers, /userinfo)
+- **Forwarded Message Detection:** Details about forwarded messages (original sender, date)
+- **Media Processing:** File extraction, size, mime type, dimensions, and duration
+- **Authorization Checks:** User database lookups and permission verification
+- **File URL Generation:** Hash creation and validation
+- **WebSocket Connections:** Connection attempts, authorization, and message publishing
+- **HTTP Streaming:** Range requests, file fetching, and hash verification
+- **Log Channel Forwarding:** Message forwarding to surveillance channels
+- **Callback Queries:** Button clicks and inline keyboard interactions
+
+**View Debug Logs:**
+
+```bash
+# Docker Compose
+docker-compose logs -f | grep DEBUG
+
+# Direct execution
+./webbridgebot | grep DEBUG
+```
+
 ### 🛠️ Troubleshooting
 
 -   **Check Environment Variables:** Ensure all required variables (`API_ID`, `API_HASH`, `BOT_TOKEN`, `BASE_URL`) are correctly set in your `.env` file.
 -   **Review Logs:** Use `docker-compose logs -f` to check for any errors during startup or operation.
+-   **Enable Debug Mode:** Set `DEBUG_MODE=true` to get detailed logging for all operations, especially useful for diagnosing forwarded message issues.
 -   **Permissions:** Make sure the `.cache` directory has the correct write permissions for the Docker container. Docker Compose handles this with volumes, but it's a common issue in other setups.
 -   **Forwarding to Log Channel Fails:** Ensure the `LOG_CHANNEL_ID` is correct and that the bot has been added as an administrator to the channel with permission to post messages.
+-   **Forwarded Messages Not Working:** Check debug logs to see if the message is being detected as forwarded and if file extraction is successful.
 
 ---
 
@@ -192,6 +230,7 @@ WebBridgeBot is licensed under the **GNU General Public License v3.0**. See the 
 
 #### 🎬 رسانه و استریمینگ
 - **پشتیبانی جامع از رسانه:** پخش مستقیم ویدیو، فایل‌های صوتی و تصاویر از تلگرام به هر مرورگر وب
+- **فوروارد هر رسانه‌ای:** فوروارد فایل‌های رسانه از هر چت یا کانالی مستقیماً به ربات برای استریم فوری
 - **درخواست‌های محدوده HTTP:** پشتیبانی کامل از استریمینگ محتوای جزئی، امکان جابجایی روان در ویدیوها و صوت‌ها
 - **کش باینری هوشمند:** سیستم کش دیسک مبتنی بر LRU که تکه‌های فایل‌های پرکاربرد را برای پخش فوری ذخیره می‌کند
 - **ویژوالایزر صوتی:** آنالایزر طیف صوتی زیبا و لحظه‌ای با استفاده از AudioMotion برای تجربه‌ای غرق‌کننده
@@ -347,9 +386,46 @@ docker-compose up -d
 
 پروژه WebBridgeBot تحت **مجوز عمومی همگانی گنو نسخه ۳.۰ (GNU General Public License v3.0)** منتشر شده است. برای جزئیات بیشتر به فایل `LICENSE` مراجعه کنید.
 
+### 🐛 حالت دیباگ (Debug Mode)
+
+WebBridgeBot شامل یک سیستم لاگ‌گیری جامع برای کمک به عیب‌یابی مشکلات مربوط به پیام‌های فوروارد شده و استریمینگ رسانه است.
+
+**فعال‌سازی حالت دیباگ:**
+
+متغیر `DEBUG_MODE=true` را در فایل `.env` یا متغیرهای محیطی خود تنظیم کنید:
+
+```plaintext
+DEBUG_MODE=true
+```
+
+**لاگ‌های دیباگ شامل:**
+
+- **پیام‌های دریافتی:** لاگ کامل تمام پیام‌های ورودی با اطلاعات فرستنده، پیش‌نمایش متن، نوع رسانه و وضعیت فوروارد
+- **دریافت دستورات:** لاگ برای تمام دستورات (/start, /authorize, /deauthorize, /listusers, /userinfo)
+- **تشخیص پیام‌های فوروارد شده:** جزئیات پیام‌های فوروارد شده (فرستنده اصلی، تاریخ)
+- **پردازش رسانه:** استخراج فایل، حجم، نوع mime، ابعاد و مدت زمان
+- **بررسی مجوزها:** جستجوی پایگاه داده کاربر و تأیید دسترسی
+- **تولید URL فایل:** ایجاد و اعتبارسنجی هش
+- **اتصالات وب‌سوکت:** تلاش‌های اتصال، مجوزدهی و انتشار پیام
+- **استریمینگ HTTP:** درخواست‌های محدوده، واکشی فایل و تأیید هش
+- **فوروارد به کانال لاگ:** فوروارد پیام به کانال‌های نظارتی
+- **کوئری‌های کال‌بک:** کلیک‌های دکمه و تعاملات صفحه‌کلید درون‌خطی
+
+**مشاهده لاگ‌های دیباگ:**
+
+```bash
+# با داکر کامپوز
+docker-compose logs -f | grep DEBUG
+
+# اجرای مستقیم
+./webbridgebot | grep DEBUG
+```
+
 ### 🛠️ عیب‌یابی
 
 -   **بررسی متغیرهای محیطی:** اطمینان حاصل کنید که تمام متغیرهای مورد نیاز (`API_ID`, `API_HASH`, `BOT_TOKEN`, `BASE_URL`) به درستی در فایل `.env` شما تنظیم شده‌اند.
 -   **بررسی لاگ‌ها:** از دستور `docker-compose logs -f` برای بررسی هرگونه خطا در هنگام راه‌اندازی یا عملکرد استفاده کنید.
+-   **فعال‌سازی حالت دیباگ:** `DEBUG_MODE=true` را تنظیم کنید تا لاگ‌های دقیق برای تمام عملیات دریافت کنید، به‌ویژه برای تشخیص مشکلات پیام‌های فوروارد شده مفید است.
 -   **مجوزها (Permissions):** مطمئن شوید که دایرکتوری `.cache` دارای مجوزهای نوشتن صحیح برای کانتینر داکر است. داکر کامپوز این مورد را با volumeها مدیریت می‌کند، اما این یک مشکل رایج در تنظیمات دیگر است.
 -   **خطا در فوروارد به کانال لاگ:** مطمئن شوید که `LOG_CHANNEL_ID` صحیح است و ربات با دسترسی ارسال پیام به عنوان ادمین به کانال اضافه شده است.
+-   **پیام‌های فوروارد شده کار نمی‌کنند:** لاگ‌های دیباگ را بررسی کنید تا ببینید آیا پیام به عنوان فوروارد شده تشخیص داده شده و آیا استخراج فایل موفقیت‌آمیز بوده است.

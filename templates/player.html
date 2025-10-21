@@ -684,6 +684,12 @@
     </header>
     <p id="status">Waiting for media...</p>
 
+    <div id="mediaMetadata" style="display: none; text-align: center; padding: var(--spacing-sm); margin: var(--spacing-sm) auto; max-width: 600px; background: var(--glass-bg); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-radius: var(--border-radius-md); border: 1px solid var(--glass-border); box-shadow: var(--shadow-xs);">
+        <div id="metadataTitle" style="font-size: 1.125rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.25rem;"></div>
+        <div id="metadataPerformer" style="font-size: 0.9375rem; color: var(--text-secondary);"></div>
+        <div id="metadataFlags" style="margin-top: 0.5rem; display: flex; gap: 0.5rem; justify-content: center; flex-wrap: wrap;"></div>
+    </div>
+
     <main>
         <div class="media-container">
             <video id="videoPlayer" controls></video>
@@ -720,7 +726,11 @@
                 statusText: document.getElementById('status'),
                 audioMotionContainer: document.getElementById('audioMotionContainer'),
                 recentUsersBar: document.getElementById('recentUsersBar'),
-                recentUsersTrack: document.getElementById('recentUsersTrack')
+                recentUsersTrack: document.getElementById('recentUsersTrack'),
+                mediaMetadata: document.getElementById('mediaMetadata'),
+                metadataTitle: document.getElementById('metadataTitle'),
+                metadataPerformer: document.getElementById('metadataPerformer'),
+                metadataFlags: document.getElementById('metadataFlags')
             };
 
             let ws;
@@ -788,6 +798,7 @@
                 dom.videoPlayer.src = '';
                 dom.audioPlayer.src = '';
                 dom.imageViewer.src = '';
+                dom.mediaMetadata.style.display = 'none';
 
                 if (audioMotionInstance) {
                     audioMotionInstance.disconnect();
@@ -797,8 +808,55 @@
                 }
             };
 
+            const displayMetadata = (data) => {
+                // Check if there's any metadata to display
+                const hasTitle = data.title && data.title.trim();
+                const hasPerformer = data.performer && data.performer.trim();
+                const isVoice = data.isVoice === 'true';
+                const isAnimation = data.isAnimation === 'true';
+
+                if (!hasTitle && !hasPerformer && !isVoice && !isAnimation) {
+                    dom.mediaMetadata.style.display = 'none';
+                    return;
+                }
+
+                // Display title
+                if (hasTitle) {
+                    dom.metadataTitle.textContent = data.title;
+                    dom.metadataTitle.style.display = 'block';
+                } else {
+                    dom.metadataTitle.style.display = 'none';
+                }
+
+                // Display performer/artist
+                if (hasPerformer) {
+                    dom.metadataPerformer.textContent = `by ${data.performer}`;
+                    dom.metadataPerformer.style.display = 'block';
+                } else {
+                    dom.metadataPerformer.style.display = 'none';
+                }
+
+                // Display flags
+                dom.metadataFlags.innerHTML = '';
+                if (isVoice) {
+                    const voiceFlag = document.createElement('span');
+                    voiceFlag.textContent = '🎤 Voice Message';
+                    voiceFlag.style.cssText = 'padding: 0.25rem 0.75rem; background: rgba(104, 211, 145, 0.2); color: var(--success-color); border-radius: var(--border-radius-sm); font-size: 0.875rem; font-weight: 500;';
+                    dom.metadataFlags.appendChild(voiceFlag);
+                }
+                if (isAnimation) {
+                    const animFlag = document.createElement('span');
+                    animFlag.textContent = '🎞️ Animation';
+                    animFlag.style.cssText = 'padding: 0.25rem 0.75rem; background: rgba(99, 179, 237, 0.2); color: var(--info-color); border-radius: var(--border-radius-sm); font-size: 0.875rem; font-weight: 500;';
+                    dom.metadataFlags.appendChild(animFlag);
+                }
+
+                dom.mediaMetadata.style.display = 'block';
+            };
+
             const displayMedia = (data) => {
                 hideAllMediaPlayers();
+                displayMetadata(data);
 
                 const uniqueUrl = `${data.url}?nocache=${new Date().getTime()}`;
 

@@ -11,14 +11,18 @@ import (
 )
 
 type DocumentFile struct {
-	ID       int64
-	Location tg.InputFileLocationClass // Changed to be more general (can be Document or Photo location)
-	FileSize int64
-	FileName string
-	MimeType string
-	Width    int // For video/photo
-	Height   int // For video/photo
-	Duration int // For video/audio (in seconds)
+	ID         int64
+	Location   tg.InputFileLocationClass // Changed to be more general (can be Document or Photo location)
+	FileSize   int64
+	FileName   string
+	MimeType   string
+	Width      int    // For video/photo
+	Height     int    // For video/photo
+	Duration   int    // For video/audio (in seconds)
+	Title      string // For audio files
+	Performer  string // For audio files (artist/performer)
+	IsVoice    bool   // True if it's a voice message
+	IsAnimation bool  // True if it's an animation/GIF
 }
 
 type FileMetadata struct {
@@ -58,27 +62,48 @@ func FileFromMedia(media tg.MessageMediaClass) (*DocumentFile, error) {
 
 		var fileName string
 		var videoWidth, videoHeight, videoDuration int
+		var audioTitle, audioPerformer string
+		var audioDuration int
+		var isVoice, isAnimation bool
+
+		// Extract metadata from document attributes
 		for _, attribute := range document.Attributes {
-			if name, ok := attribute.(*tg.DocumentAttributeFilename); ok {
-				fileName = name.FileName
+			switch attr := attribute.(type) {
+			case *tg.DocumentAttributeFilename:
+				fileName = attr.FileName
+			case *tg.DocumentAttributeVideo:
+				videoWidth = attr.W
+				videoHeight = attr.H
+				videoDuration = int(attr.Duration)
+			case *tg.DocumentAttributeAudio:
+				audioDuration = int(attr.Duration)
+				audioTitle = attr.Title
+				audioPerformer = attr.Performer
+				isVoice = attr.Voice // Voice messages have this flag set to true
+			case *tg.DocumentAttributeAnimated:
+				isAnimation = true
 			}
-			if videoAttr, ok := attribute.(*tg.DocumentAttributeVideo); ok {
-				videoWidth = videoAttr.W
-				videoHeight = videoAttr.H
-				videoDuration = int(videoAttr.Duration)
-			}
-			// tg.DocumentAttributeAudio could also be parsed if specific audio metadata is needed.
+		}
+
+		// Determine the final duration (prefer video duration, then audio duration)
+		finalDuration := videoDuration
+		if finalDuration == 0 {
+			finalDuration = audioDuration
 		}
 
 		return &DocumentFile{
-			ID:       document.ID,
-			Location: document.AsInputDocumentFileLocation(), // tg.InputDocumentFileLocation implements tg.InputFileLocationClass
-			FileSize: document.Size,
-			FileName: fileName,
-			MimeType: document.MimeType,
-			Width:    videoWidth,
-			Height:   videoHeight,
-			Duration: videoDuration,
+			ID:          document.ID,
+			Location:    document.AsInputDocumentFileLocation(), // tg.InputDocumentFileLocation implements tg.InputFileLocationClass
+			FileSize:    document.Size,
+			FileName:    fileName,
+			MimeType:    document.MimeType,
+			Width:       videoWidth,
+			Height:      videoHeight,
+			Duration:    finalDuration,
+			Title:       audioTitle,
+			Performer:   audioPerformer,
+			IsVoice:     isVoice,
+			IsAnimation: isAnimation,
 		}, nil
 
 	case *tg.MessageMediaPhoto:
@@ -122,17 +147,16 @@ func FileFromMedia(media tg.MessageMediaClass) (*DocumentFile, error) {
 		// Determine a filename and mimetype for photos.
 		fileName := fmt.Sprintf("photo_%d.jpg", photo.ID) // Default filename
 		mimeType := "image/jpeg"                          // Common mime type for photos from Telegram
-		if largestSize != nil {
-			switch largestSize.GetType() { // Attempt to infer mime type from photo size type
-			case "j":
-				mimeType = "image/jpeg"
-			case "p":
-				mimeType = "image/png"
-			case "w":
-				mimeType = "image/webp"
-			case "g":
-				mimeType = "image/gif"
-			}
+		// Attempt to infer mime type from photo size type
+		switch largestSize.GetType() {
+		case "j":
+			mimeType = "image/jpeg"
+		case "p":
+			mimeType = "image/png"
+		case "w":
+			mimeType = "image/webp"
+		case "g":
+			mimeType = "image/gif"
 		}
 
 		return &DocumentFile{
