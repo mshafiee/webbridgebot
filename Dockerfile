@@ -1,5 +1,5 @@
 # Use the official Go image as a parent image
-FROM golang:1.24 AS builder
+FROM golang:1.25.3 AS builder
 
 # Set the working directory
 WORKDIR /app
