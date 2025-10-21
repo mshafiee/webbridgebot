@@ -2,17 +2,63 @@
 
 WebBridgeBot is a Telegram bot that acts as a bridge between Telegram and your web browser. It allows you to forward any video, audio, or photo file to the bot and instantly receive a private link. This link opens a web-based media player that streams the content directly from the bot, enabling seamless playback on devices like TVs, game consoles, or any modern web browser.
 
+<p align="center">
+  <img src="assets/web-player-screenshot.png" alt="WebBridgeBot Web Player Interface" width="800">
+</p>
+
 ---
 
 ### ✨ Features
 
-- **Direct Media Streaming:** Stream videos, music, and photos from Telegram directly to a web interface without needing to download them first.
-- **Instant Playback:** Utilizes WebSockets for real-time communication between the bot and the web player, allowing for instant media loading and control.
-- **Responsive Web Player:** A clean, modern web interface that works on desktops, tablets, and mobile devices. Includes a visualizer for audio files.
-- **Secure User Management:** Features a robust authorization system. The first user becomes an admin, who can then authorize or grant admin rights to other users.
-- **Efficient Caching:** Caches downloaded file chunks on disk to reduce redundant downloads from Telegram and provide faster access to frequently played media.
-- **Partial Content Streaming:** Supports HTTP range requests, allowing browsers to seek through media and stream content efficiently, which is crucial for large files.
-- **Admin Surveillance:** Optionally forward all media received by the bot to a private channel for logging and administrative review.
+#### 🎬 Media & Streaming
+- **Universal Media Support:** Stream videos, audio files, and photos directly from Telegram to any web browser
+- **HTTP Range Requests:** Full support for partial content streaming, enabling smooth seeking in videos and audio
+- **Intelligent Binary Cache:** LRU-based disk caching system that stores frequently accessed file chunks for instant replay
+- **Audio Visualization:** Beautiful real-time audio spectrum analyzer using AudioMotion for an immersive listening experience
+- **High-Quality Playback:** Native HTML5 media players with full browser controls and keyboard shortcuts
+
+#### ⚡ Real-Time Communication
+- **WebSocket Integration:** Instant bidirectional communication between Telegram bot and web player
+- **Remote Control:** Control playback directly from Telegram using inline buttons (play/pause, seek ±10s, restart, fullscreen)
+- **Live Status Updates:** Real-time connection status and playback state notifications
+- **Instant Media Loading:** Media appears in the web player immediately when sent to the bot
+
+#### 🔒 Security & Access Control
+- **Robust Authorization System:** First user automatically becomes admin with full control privileges
+- **Granular Permissions:** Admins can authorize users, grant admin rights, or revoke access at any time
+- **Secure URL Generation:** Hash-based authentication ensures media URLs cannot be guessed or shared
+- **Session Persistence:** SQLite-based secure session storage with graceful shutdown handling
+
+#### 👨‍💼 Admin Features
+- **User Management Commands:** `/authorize`, `/deauthorize`, `/listusers`, `/userinfo`
+- **Admin Notifications:** Automatic alerts when new users request access with one-click authorization buttons
+- **Media Surveillance:** Optional forwarding of all media to a private log channel with user attribution
+- **Paginated User Lists:** Efficiently browse through all users with detailed status information
+
+#### 🎨 Modern Web Interface
+- **Gorgeous Dark Theme:** Glassmorphism design with gradient accents and smooth animations
+- **Fully Responsive:** Works flawlessly on desktops, tablets, smartphones, smart TVs, and game consoles
+- **Profile Avatars:** Display user profile photos fetched directly from Telegram
+- **Recent Users Bar:** Quick-switch between multiple user sessions with localStorage-based history
+- **Accessibility:** Full keyboard navigation, ARIA labels, and reduced motion support
+
+#### 🚀 Performance & Reliability
+- **Asynchronous Operations:** Background metadata saving with debouncing to minimize disk I/O
+- **Efficient Memory Usage:** Fixed-size chunk architecture with LRU eviction for optimal cache management
+- **Graceful Error Handling:** Comprehensive error recovery with user-friendly status messages
+- **Docker Ready:** Full containerization support with Docker Compose for easy deployment
+- **Cross-Platform:** Written in Go for excellent performance across all operating systems
+
+### 🛠️ Technologies
+
+- **Backend:** Go 1.21+ with Gorilla Mux for routing and WebSockets
+- **Telegram API:** gotgproto (TDLib wrapper) for full MTProto support
+- **Database:** SQLite for user management and session storage
+- **Caching:** Custom binary cache with LRU eviction and asynchronous persistence
+- **Frontend:** Vanilla JavaScript with HTML5 media APIs and CSS3 animations
+- **Audio Visualization:** AudioMotion Analyzer for real-time spectrum display
+- **Configuration:** Viper + Cobra for flexible config management (env, flags, files)
+- **Containerization:** Docker & Docker Compose for simplified deployment
 
 ### ⚙️ How It Works
 
@@ -136,17 +182,63 @@ WebBridgeBot is licensed under the **GNU General Public License v3.0**. See the 
 
 پروژه WebBridgeBot یک ربات تلگرامی است که به عنوان پلی بین تلگرام و مرورگر وب شما عمل می‌کند. این ربات به شما امکان می‌دهد هر فایل ویدیویی، صوتی یا تصویری را به آن ارسال کرده و فوراً یک لینک خصوصی دریافت کنید. این لینک یک پخش‌کننده رسانه مبتنی بر وب را باز می‌کند که محتوا را مستقیماً از ربات استریم کرده و امکان پخش یکپارچه بر روی دستگاه‌هایی مانند تلویزیون، کنسول‌های بازی یا هر مرورگر وب مدرنی را فراهم می‌کند.
 
+<p align="center">
+  <img src="assets/web-player-screenshot.png" alt="رابط وب پخش‌کننده WebBridgeBot" width="800">
+</p>
+
 ---
 
 ### ✨ ویژگی‌ها
 
-- **استریم مستقیم رسانه:** ویدیوها، موسیقی و تصاویر را مستقیماً از تلگرام به یک رابط وب استریم کنید، بدون نیاز به دانلود اولیه.
-- **پخش فوری:** از وب‌سوکت (WebSocket) برای ارتباط لحظه‌ای بین ربات و پخش‌کننده وب استفاده می‌کند که امکان بارگذاری و کنترل فوری رسانه را فراهم می‌کند.
-- **پخش‌کننده وب واکنش‌گرا:** یک رابط وب تمیز و مدرن که بر روی دسکتاپ، تبلت و دستگاه‌های موبایل کار می‌کند. شامل یک ویژوالایزر برای فایل‌های صوتی.
-- **مدیریت امن کاربران:** دارای یک سیستم مجوزدهی قوی است. اولین کاربر به عنوان ادمین شناخته شده و می‌تواند به کاربران دیگر مجوز دسترسی یا سطح ادمین بدهد.
-- **کش (Cache) کارآمد:** تکه‌های فایل دانلود شده را بر روی دیسک کش می‌کند تا دانلودهای تکراری از تلگرام کاهش یافته و دسترسی سریع‌تری به رسانه‌های پرتکرار فراهم شود.
-- **پخش بخشی از محتوا:** از درخواست‌های محدوده HTTP (Range Requests) پشتیبانی می‌کند که به مرورگرها اجازه می‌دهد در فایل‌های رسانه جابجا شوند و محتوا را به طور کارآمد استریم کنند، که برای فایل‌های بزرگ حیاتی است.
-- **نظارت ادمین:** به صورت اختیاری تمام رسانه‌های دریافتی توسط ربات را برای ثبت و بازبینی توسط ادمین به یک کانال خصوصی فوروارد می‌کند.
+#### 🎬 رسانه و استریمینگ
+- **پشتیبانی جامع از رسانه:** پخش مستقیم ویدیو، فایل‌های صوتی و تصاویر از تلگرام به هر مرورگر وب
+- **درخواست‌های محدوده HTTP:** پشتیبانی کامل از استریمینگ محتوای جزئی، امکان جابجایی روان در ویدیوها و صوت‌ها
+- **کش باینری هوشمند:** سیستم کش دیسک مبتنی بر LRU که تکه‌های فایل‌های پرکاربرد را برای پخش فوری ذخیره می‌کند
+- **ویژوالایزر صوتی:** آنالایزر طیف صوتی زیبا و لحظه‌ای با استفاده از AudioMotion برای تجربه‌ای غرق‌کننده
+- **پخش با کیفیت بالا:** پخش‌کننده‌های رسانه HTML5 بومی با کنترل‌های کامل مرورگر و میانبرهای صفحه‌کلید
+
+#### ⚡ ارتباط لحظه‌ای
+- **یکپارچگی وب‌سوکت:** ارتباط دوطرفه فوری بین ربات تلگرام و پخش‌کننده وب
+- **کنترل از راه دور:** کنترل پخش مستقیماً از تلگرام با استفاده از دکمه‌های درون‌خطی (پخش/توقف، جابجایی ±۱۰ ثانیه، شروع مجدد، تمام‌صفحه)
+- **به‌روزرسانی وضعیت زنده:** اعلان‌های لحظه‌ای وضعیت اتصال و حالت پخش
+- **بارگذاری فوری رسانه:** رسانه بلافاصله پس از ارسال به ربات در پخش‌کننده وب ظاهر می‌شود
+
+#### 🔒 امنیت و کنترل دسترسی
+- **سیستم مجوزدهی قوی:** اولین کاربر به طور خودکار ادمین می‌شود با تمام اختیارات کنترلی
+- **مجوزهای دقیق:** ادمین‌ها می‌توانند کاربران را مجاز کنند، حق ادمین بدهند یا دسترسی را لغو کنند
+- **تولید URL امن:** احراز هویت مبتنی بر هش تضمین می‌کند URL های رسانه قابل حدس زدن یا اشتراک‌گذاری نیستند
+- **ماندگاری نشست:** ذخیره‌سازی امن نشست مبتنی بر SQLite با مدیریت خاموش شدن ایمن
+
+#### 👨‍💼 ویژگی‌های ادمین
+- **دستورات مدیریت کاربر:** `/authorize`، `/deauthorize`، `/listusers`، `/userinfo`
+- **اعلان‌های ادمین:** هشدارهای خودکار هنگامی که کاربران جدید درخواست دسترسی می‌کنند با دکمه‌های تأیید یک‌کلیکی
+- **نظارت رسانه:** فوروارد اختیاری تمام رسانه‌ها به کانال لاگ خصوصی با نسبت دادن کاربر
+- **لیست‌های کاربر صفحه‌بندی شده:** مرور کارآمد تمام کاربران با اطلاعات دقیق وضعیت
+
+#### 🎨 رابط وب مدرن
+- **تم تاریک زیبا:** طراحی گلس‌مورفیسم با لهجه‌های گرادیانت و انیمیشن‌های روان
+- **کاملاً واکنش‌گرا:** بدون مشکل روی دسکتاپ، تبلت، گوشی‌های هوشمند، تلویزیون‌های هوشمند و کنسول‌های بازی کار می‌کند
+- **آواتار پروفایل:** نمایش عکس‌های پروفایل کاربر که مستقیماً از تلگرام دریافت می‌شوند
+- **نوار کاربران اخیر:** جابجایی سریع بین نشست‌های کاربری متعدد با تاریخچه مبتنی بر localStorage
+- **دسترس‌پذیری:** ناوبری کامل صفحه‌کلید، برچسب‌های ARIA و پشتیبانی از حرکت کاهش‌یافته
+
+#### 🚀 عملکرد و قابلیت اطمینان
+- **عملیات ناهمزمان:** ذخیره‌سازی متادیتا در پس‌زمینه با debouncing برای به حداقل رساندن I/O دیسک
+- **استفاده بهینه از حافظه:** معماری تکه با اندازه ثابت با حذف LRU برای مدیریت بهینه کش
+- **مدیریت خطای ایمن:** بازیابی جامع خطا با پیام‌های وضعیت کاربرپسند
+- **آماده Docker:** پشتیبانی کامل از کانتینری‌سازی با Docker Compose برای استقرار آسان
+- **چندسکویی:** نوشته شده در Go برای عملکرد عالی در تمام سیستم‌عامل‌ها
+
+### 🛠️ فناوری‌ها
+
+- **بک‌اند:** Go نسخه 1.21+ با Gorilla Mux برای مسیریابی و وب‌سوکت
+- **API تلگرام:** gotgproto (wrapper برای TDLib) با پشتیبانی کامل MTProto
+- **پایگاه داده:** SQLite برای مدیریت کاربر و ذخیره‌سازی نشست
+- **کش:** کش باینری سفارشی با حذف LRU و پایداری ناهمزمان
+- **فرانت‌اند:** JavaScript خالص با APIهای رسانه HTML5 و انیمیشن‌های CSS3
+- **ویژوالایزر صوتی:** AudioMotion Analyzer برای نمایش طیف لحظه‌ای
+- **پیکربندی:** Viper + Cobra برای مدیریت انعطاف‌پذیر پیکربندی (env، flags، files)
+- **کانتینری‌سازی:** Docker و Docker Compose برای استقرار ساده‌شده
 
 ### ⚙️ نحوه کار
 
