@@ -160,6 +160,89 @@
             pointer-events: none;
         }
 
+        /* Recent Users Bar */
+        .recent-users-bar {
+            position: fixed;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: none; /* hidden until >= 2 entries */
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 0.75rem env(safe-area-inset-bottom);
+            background: rgba(0, 0, 0, 0.35);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            z-index: 4;
+            overflow-x: auto;
+            scrollbar-width: thin;
+        }
+        .recent-users-track {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            width: 100%;
+        }
+        .avatar-chip {
+            position: relative;
+            width: 44px;
+            height: 44px;
+            flex: 0 0 auto;
+            border-radius: 999px;
+            overflow: hidden;
+            box-shadow: 0 2px 6px var(--shadow-medium);
+            cursor: pointer;
+            outline: none;
+            border: 2px solid transparent;
+            transition: transform 150ms ease;
+        }
+        .avatar-chip:hover { transform: translateY(-1px); }
+        .avatar-chip:focus-visible { border-color: var(--primary-color); }
+        .avatar-chip img {
+            width: 100%;
+            height: 100%;
+            display: block;
+            object-fit: cover;
+            object-position: center;
+        }
+        .avatar-chip .avatar-initials {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            object-fit: cover;
+        }
+        .avatar-initials {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            color: #fff;
+            letter-spacing: 0.3px;
+        }
+        .avatar-delete {
+            position: absolute;
+            right: -4px;
+            bottom: -4px;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: rgba(0,0,0,0.7);
+            color: #fff;
+            font-size: 12px;
+            line-height: 18px;
+            text-align: center;
+            border: 1px solid rgba(255,255,255,0.25);
+            display: none;
+            z-index: 10;
+            cursor: pointer;
+        }
+        @media (pointer: fine) {
+            .avatar-chip:hover .avatar-delete { display: block; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .avatar-chip { transition: none; }
+        }
+
         @media (max-width: 768px) {
             header,
             main,
@@ -251,6 +334,10 @@
 
     <div id="audioMotionContainer"></div>
 
+    <div id="recentUsersBar" class="recent-users-bar" aria-label="Recent users">
+        <div class="recent-users-track" id="recentUsersTrack"></div>
+    </div>
+
     <script type="module">
         import AudioMotionAnalyzer from "https://cdn.skypack.dev/audiomotion-analyzer?min";
 
@@ -264,7 +351,9 @@
                 backwardButton: document.getElementById('backwardButton'),
                 forwardButton: document.getElementById('forwardButton'),
                 statusText: document.getElementById('status'),
-                audioMotionContainer: document.getElementById('audioMotionContainer')
+                audioMotionContainer: document.getElementById('audioMotionContainer'),
+                recentUsersBar: document.getElementById('recentUsersBar'),
+                recentUsersTrack: document.getElementById('recentUsersTrack')
             };
 
             let ws;
@@ -591,6 +680,13 @@
             };
 
             const initialize = () => {
+                recentUsers.persistCurrentUser({
+                    chatID: {{.User.ChatID}},
+                    firstName: "{{.User.FirstName}}",
+                    lastName: "{{.User.LastName}}",
+                    username: "{{.User.Username}}"
+                });
+                recentUsers.render();
                 setupWebSocket();
                 setupEventListeners();
                 updateStatus('Waiting for media...');
@@ -598,6 +694,136 @@
 
             initialize();
         });
+
+        // Recent Users logic
+        const recentUsers = (() => {
+            const STORAGE_KEY = 'wbb:recentUsers:v1';
+            const MAX = 12;
+
+            const load = () => {
+                try {
+                    const raw = localStorage.getItem(STORAGE_KEY);
+                    if (!raw) return [];
+                    const list = JSON.parse(raw);
+                    if (!Array.isArray(list)) return [];
+                    return list;
+                } catch { return []; }
+            };
+
+            const save = (list) => {
+                try { localStorage.setItem(STORAGE_KEY, JSON.stringify(list)); } catch {}
+            };
+
+            const persistCurrentUser = (u) => {
+                const list = load();
+                const now = Date.now();
+                const idx = list.findIndex(x => String(x.chatID) === String(u.chatID));
+                if (idx !== -1) list.splice(idx, 1);
+                list.unshift({
+                    chatID: u.chatID,
+                    firstName: u.firstName || '',
+                    lastName: u.lastName || '',
+                    username: u.username || '',
+                    lastOpenedAt: now
+                });
+                if (list.length > MAX) list.length = MAX;
+                save(list);
+            };
+
+            const hashColor = (id) => {
+                let h = 0; const s = String(id);
+                for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+                const hue = h % 360;
+                return `hsl(${hue} 70% 45%)`;
+            };
+
+            const initialsOf = (firstName, lastName, username) => {
+                const a = (firstName || '').trim()[0] || '';
+                const b = (lastName || '').trim()[0] || '';
+                const u = (username || '').trim()[0] || '';
+                const init = (a + b) || a || u || '?';
+                return init.toUpperCase();
+            };
+
+            const remove = (chatID) => {
+                const list = load().filter(x => String(x.chatID) !== String(chatID));
+                save(list);
+            };
+
+            const render = () => {
+                const track = document.getElementById('recentUsersTrack');
+                const bar = document.getElementById('recentUsersBar');
+                const list = load();
+                const currentID = String({{.User.ChatID}});
+                track.innerHTML = '';
+                if (list.length < 2) { bar.style.display = 'none'; return; }
+                bar.style.display = 'flex';
+
+                list.forEach(item => {
+                    const chatID = String(item.chatID);
+                    const chip = document.createElement('button');
+                    chip.className = 'avatar-chip';
+                    chip.type = 'button';
+                    chip.title = item.username ? `@${item.username}` : `${item.firstName} ${item.lastName}`.trim();
+                    chip.setAttribute('aria-label', `Switch to ${chip.title}`);
+
+                    // image first
+                    const img = document.createElement('img');
+                    img.alt = chip.title;
+                    img.decoding = 'async';
+                    img.loading = 'lazy';
+                    img.src = `/avatar/${chatID}?v=${item.lastOpenedAt || 0}`;
+                    img.onerror = () => {
+                        img.remove();
+                        const fallback = document.createElement('div');
+                        fallback.className = 'avatar-initials';
+                        fallback.style.background = hashColor(chatID);
+                        fallback.textContent = initialsOf(item.firstName, item.lastName, item.username);
+                        chip.prepend(fallback);
+                    };
+                    chip.appendChild(img);
+
+                    // delete button (hover only on desktop)
+                    const del = document.createElement('span');
+                    del.className = 'avatar-delete';
+                    del.textContent = '✕';
+                    del.setAttribute('aria-hidden', 'true');
+                    chip.appendChild(del);
+
+                    // click to navigate
+                    chip.addEventListener('click', (e) => {
+                        if ((e.target) === del) return; // ignore if delete pressed
+                        if (chatID === currentID) return;
+                        window.location.assign(`/${chatID}`);
+                    });
+
+                    // delete interactions
+                    del.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        remove(chatID);
+                        render();
+                    });
+
+                    // long-press for touch
+                    let pressTimer = null;
+                    const startPress = () => {
+                        pressTimer = window.setTimeout(() => {
+                            const confirmed = window.confirm('Remove this user from recents?');
+                            if (confirmed) { remove(chatID); render(); }
+                        }, 600);
+                    };
+                    const cancelPress = () => { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; } };
+                    chip.addEventListener('touchstart', startPress, {passive: true});
+                    chip.addEventListener('touchend', cancelPress);
+                    chip.addEventListener('touchmove', cancelPress);
+                    chip.addEventListener('touchcancel', cancelPress);
+
+                    track.appendChild(chip);
+                });
+            };
+
+            return { persistCurrentUser, render };
+        })();
     </script>
 </body>
 </html>

@@ -886,6 +886,7 @@ func (b *TelegramBot) startWebServer() {
 	router := mux.NewRouter()
 
 	router.HandleFunc("/ws/{chatID}", b.handleWebSocket)
+	router.HandleFunc("/avatar/{chatID}", b.handleAvatar)
 	router.HandleFunc("/{messageID}/{hash}", b.handleStream)
 	router.HandleFunc("/{chatID}", b.handlePlayer)
 	router.HandleFunc("/{chatID}/", b.handlePlayer)
@@ -1054,6 +1055,137 @@ func (b *TelegramBot) parseChatID(vars map[string]string) (int64, error) {
 	}
 
 	return strconv.ParseInt(chatIDStr, 10, 64)
+}
+
+// handleAvatar serves a user's Telegram profile photo (small square) if available.
+// It authorizes against known users and streams a cached small thumbnail.
+func (b *TelegramBot) handleAvatar(w http.ResponseWriter, r *http.Request) {
+	chatID, err := b.parseChatID(mux.Vars(r))
+	if err != nil {
+		http.Error(w, "Invalid chat ID", http.StatusBadRequest)
+		return
+	}
+
+	// Authorize user based on chatID
+	userInfo, err := b.userRepository.GetUserInfo(chatID)
+	if err != nil || !userInfo.IsAuthorized {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	ctx := r.Context()
+
+	// Resolve InputUser from peer storage to query photos
+	peer := b.tgCtx.PeerStorage.GetInputPeerById(chatID)
+
+	var inputUser tg.InputUserClass
+	switch p := peer.(type) {
+	case *tg.InputPeerUser:
+		inputUser = &tg.InputUser{UserID: p.UserID, AccessHash: p.AccessHash}
+	case *tg.InputPeerSelf:
+		inputUser = &tg.InputUserSelf{}
+	default:
+		http.Error(w, "User peer not found", http.StatusNotFound)
+		return
+	}
+
+	// Fetch latest user photos (limit 1)
+	photosRes, err := b.tgClient.API().PhotosGetUserPhotos(ctx, &tg.PhotosGetUserPhotosRequest{
+		UserID: inputUser,
+		Offset: 0,
+		MaxID:  0,
+		Limit:  1,
+	})
+	if err != nil {
+		b.logger.Printf("Avatar: failed PhotosGetUserPhotos for %d: %v", chatID, err)
+		http.NotFound(w, r)
+		return
+	}
+
+	var photo *tg.Photo
+	switch pr := photosRes.(type) {
+	case *tg.PhotosPhotos:
+		if len(pr.Photos) == 0 {
+			http.NotFound(w, r)
+			return
+		}
+		if p, ok := pr.Photos[0].(*tg.Photo); ok {
+			photo = p
+		}
+	case *tg.PhotosPhotosSlice:
+		if len(pr.Photos) == 0 {
+			http.NotFound(w, r)
+			return
+		}
+		if p, ok := pr.Photos[0].(*tg.Photo); ok {
+			photo = p
+		}
+	default:
+		http.NotFound(w, r)
+		return
+	}
+
+	if photo == nil || photo.AccessHash == 0 {
+		http.NotFound(w, r)
+		return
+	}
+
+	// Choose a reasonable thumbnail size type (prefer "x" then fallback)
+	thumbType := "x"
+	var sizeBytes int
+	for _, s := range photo.Sizes {
+		if ps, ok := s.(*tg.PhotoSize); ok {
+			if ps.Type == "x" {
+				thumbType = ps.Type
+				sizeBytes = ps.Size
+				break
+			}
+			// Track fallback if no "x" exists
+			if sizeBytes == 0 && ps.Size > 0 {
+				thumbType = ps.Type
+				sizeBytes = ps.Size
+			}
+		}
+	}
+	if sizeBytes <= 0 {
+		// Fallback size when size unknown; stream a small reasonable amount via reader with a large end
+		sizeBytes = 256 * 1024 // 256 KiB heuristic for small thumbnail
+	}
+
+	// Build location for the chosen thumbnail
+	location := &tg.InputPhotoFileLocation{
+		ID:            photo.ID,
+		AccessHash:    photo.AccessHash,
+		FileReference: photo.FileReference,
+		ThumbSize:     thumbType,
+	}
+
+	// Stream using existing Telegram reader (it also caches chunks)
+	start := int64(0)
+	end := int64(sizeBytes - 1)
+	if end < 0 {
+		end = 0
+	}
+
+	rc, err := reader.NewTelegramReader(ctx, b.tgClient, location, start, end, int64(sizeBytes), b.config.BinaryCache, b.logger)
+	if err != nil {
+		b.logger.Printf("Avatar: reader init failed for %d: %v", chatID, err)
+		http.NotFound(w, r)
+		return
+	}
+	defer rc.Close()
+
+	w.Header().Set("Content-Type", "image/jpeg")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	// Best-effort content-length
+	if sizeBytes > 0 {
+		w.Header().Set("Content-Length", strconv.Itoa(sizeBytes))
+	}
+
+	if _, err := io.Copy(w, rc); err != nil {
+		// Client disconnects are common; respond gracefully
+		b.logger.Printf("Avatar: stream error for %d: %v", chatID, err)
+	}
 }
 
 // handlePlayer serves the HTML player page and adds authorization.
