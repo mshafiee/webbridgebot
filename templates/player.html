@@ -9,79 +9,206 @@
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            --primary-color: #00aaff;
-            --secondary-color: #007bff;
-            --secondary-hover-color: #0056b3;
-            --background-color: #222;
-            --text-color: #fff;
-            --subtle-text-color: #aaa;
-            --error-color: #ff6347;
-            --info-color: #ffd700;
-            --shadow-dark: rgba(0, 0, 0, 0.7);
-            --shadow-medium: rgba(0, 0, 0, 0.4);
-            --border-radius-lg: 12px;
-            --border-radius-md: 8px;
-            --spacing-lg: 2rem;
-            --spacing-md: 1.5rem;
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --accent-gradient: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            --secondary-gradient: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            --premium-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+            --shimmer-gradient: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+            --background: #0a0e27;
+            --background-secondary: #151932;
+            --background-tertiary: #1a1f3a;
+            --text-primary: #ffffff;
+            --text-secondary: #cbd5e0;
+            --text-muted: #718096;
+            --glass-bg: rgba(255, 255, 255, 0.03);
+            --glass-bg-hover: rgba(255, 255, 255, 0.08);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --glass-border-strong: rgba(255, 255, 255, 0.15);
+            --error-color: #fc8181;
+            --success-color: #68d391;
+            --info-color: #63b3ed;
+            --shadow-xs: 0 1px 4px rgba(0, 0, 0, 0.1);
+            --shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.15);
+            --shadow-md: 0 10px 30px rgba(0, 0, 0, 0.2);
+            --shadow-lg: 0 25px 70px rgba(0, 0, 0, 0.35);
+            --shadow-glow: 0 0 50px rgba(102, 126, 234, 0.25);
+            --shadow-glow-strong: 0 0 80px rgba(102, 126, 234, 0.4);
+            --border-radius-sm: 10px;
+            --border-radius-md: 18px;
+            --border-radius-lg: 28px;
+            --spacing-xs: 0.5rem;
             --spacing-sm: 1rem;
-            --font-size-h1: 2.8rem;
-            --font-size-status: 1.5rem;
-            --font-size-button: 1.2rem;
+            --spacing-md: 1.5rem;
+            --spacing-lg: 2rem;
+            --spacing-xl: 3rem;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
 
         body {
-            margin: 0;
-            box-sizing: border-box;
-            display: flex;
-            flex-direction: column;
-            min-height: 100vh;
-            font-family: 'Roboto', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: var(--background-color);
-            color: var(--text-color);
-            position: relative;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+            background: var(--background);
+            color: var(--text-primary);
             height: 100vh;
             overflow: hidden;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle at 20% 50%, rgba(102, 126, 234, 0.15) 0%, transparent 50%),
+                        radial-gradient(circle at 80% 80%, rgba(118, 75, 162, 0.15) 0%, transparent 50%),
+                        radial-gradient(circle at 40% 20%, rgba(79, 172, 254, 0.1) 0%, transparent 50%);
+            animation: gradientShift 20s ease infinite;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        @keyframes gradientShift {
+            0%, 100% { transform: translate(0, 0) rotate(0deg); }
+            33% { transform: translate(5%, 5%) rotate(120deg); }
+            66% { transform: translate(-5%, 5%) rotate(240deg); }
         }
 
         header {
-            padding-top: var(--spacing-lg);
-            padding-left: var(--spacing-lg);
-            padding-right: var(--spacing-lg);
-            padding-bottom: var(--spacing-sm);
+            padding: var(--spacing-lg) var(--spacing-lg) var(--spacing-md);
             flex-shrink: 0;
             text-align: center;
+            position: relative;
+            z-index: 10;
         }
 
         h1 {
-            color: var(--primary-color);
-            font-size: var(--font-size-h1);
-            font-weight: 700;
-            margin: 0;
-            text-shadow: 3px 3px 8px var(--shadow-dark);
-            z-index: 2;
+            background: var(--premium-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            font-size: clamp(2.2rem, 5vw, 3.5rem);
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            margin-bottom: var(--spacing-sm);
+            filter: drop-shadow(0 6px 20px rgba(102, 126, 234, 0.4));
             position: relative;
+            animation: fadeInDown 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
         
         .user-info {
-            color: var(--subtle-text-color);
-            font-size: 1rem;
-            margin-top: 0.5rem;
-            text-align: center;
-            z-index: 2;
-            position: relative;
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: var(--spacing-xs);
+            flex-wrap: wrap;
+            opacity: 0;
+            animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.2s forwards;
+            padding: var(--spacing-xs) var(--spacing-md);
+            background: var(--glass-bg);
+            border-radius: var(--border-radius-lg);
+            border: 1px solid var(--glass-border);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            max-width: fit-content;
+            margin: 0 auto;
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .user-info span {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
         }
 
         #status {
-            font-size: var(--font-size-status);
-            margin-top: var(--spacing-sm);
-            margin-bottom: var(--spacing-md);
-            color: var(--subtle-text-color);
-            text-shadow: 2px 2px 6px var(--shadow-dark);
-            z-index: 2;
-            position: relative;
-            flex-shrink: 0;
-            padding: 0 var(--spacing-lg);
+            font-size: clamp(0.875rem, 2vw, 1rem);
+            padding: var(--spacing-sm) var(--spacing-lg);
+            color: var(--text-secondary);
             text-align: center;
+            position: relative;
+            z-index: 10;
+            font-weight: 500;
+            margin: var(--spacing-md) auto;
+            max-width: fit-content;
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-radius: var(--border-radius-lg);
+            border: 1px solid var(--glass-border);
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+            min-height: 2.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: var(--shadow-xs);
+            opacity: 0;
+            animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.4s forwards;
+        }
+
+        #status::before {
+            content: '';
+            position: absolute;
+            inset: -1px;
+            border-radius: inherit;
+            padding: 1px;
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.3), rgba(240, 147, 251, 0.3));
+            -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor;
+            mask-composite: exclude;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        #status:hover::before {
+            opacity: 1;
+        }
+
+        #status.pulse {
+            animation: statusPulse 0.7s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        @keyframes statusPulse {
+            0%, 100% { 
+                transform: scale(1);
+                box-shadow: var(--shadow-xs);
+            }
+            50% { 
+                transform: scale(1.03);
+                box-shadow: 0 0 30px rgba(102, 126, 234, 0.4), var(--shadow-sm);
+                border-color: var(--glass-border-strong);
+            }
         }
 
         main {
@@ -89,13 +216,21 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            width: 100%;
-            max-width: 1400px;
-            margin: 0 auto;
-            padding-left: var(--spacing-lg);
-            padding-right: var(--spacing-lg);
+            padding: 0 var(--spacing-lg);
+            position: relative;
+            z-index: 5;
             overflow: hidden;
-            box-sizing: border-box;
+        }
+
+        .media-container {
+            position: relative;
+            max-width: 90vw;
+            max-height: 70vh;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
         #videoPlayer,
@@ -107,47 +242,140 @@
             height: auto;
             display: none;
             border-radius: var(--border-radius-lg);
-            box-shadow: 0 6px 12px var(--shadow-medium);
-            z-index: 2;
+            box-shadow: var(--shadow-lg), var(--shadow-glow);
             position: relative;
             object-fit: contain;
+            border: 1px solid var(--glass-border-strong);
+            animation: mediaFadeIn 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        #videoPlayer:hover,
+        #imageViewer:hover {
+            transform: scale(1.01);
+            box-shadow: var(--shadow-lg), var(--shadow-glow-strong);
+        }
+
+        @keyframes mediaFadeIn {
+            0% {
+                opacity: 0;
+                transform: scale(0.92) translateY(20px);
+                filter: blur(10px);
+            }
+            100% {
+                opacity: 1;
+                transform: scale(1) translateY(0);
+                filter: blur(0);
+            }
+        }
+
+        #videoPlayer::-webkit-media-controls-panel,
+        #audioPlayer::-webkit-media-controls-panel {
+            background: var(--glass-bg);
+            backdrop-filter: blur(10px);
+        }
+
+        /* Smooth transitions for player visibility */
+        #videoPlayer,
+        #audioPlayer,
+        #imageViewer {
+            opacity: 0;
+            transition: opacity 0.4s ease;
+        }
+
+        #videoPlayer[style*="display: block"],
+        #audioPlayer[style*="display: block"],
+        #imageViewer[style*="display: block"] {
+            opacity: 1;
         }
 
         .button-container {
             display: flex;
             flex-wrap: wrap;
             justify-content: center;
-            width: 100%;
-            padding-top: var(--spacing-md);
-            padding-left: var(--spacing-lg);
-            padding-right: var(--spacing-lg);
-            padding-bottom: var(--spacing-lg);
+            align-items: center;
             gap: var(--spacing-sm);
-            z-index: 3;
+            padding: var(--spacing-md) var(--spacing-lg) var(--spacing-lg);
             position: relative;
+            z-index: 10;
             flex-shrink: 0;
+            transition: padding 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        body.has-users-bar .button-container {
+            padding-bottom: calc(var(--spacing-lg) + 80px);
+        }
+        
+        .button-container .button {
+            pointer-events: auto;
         }
 
         .button {
-            padding: 0.8rem 1.5rem;
-            font-size: var(--font-size-button);
+            position: relative;
+            padding: 0.875rem 2rem;
+            font-size: 0.9375rem;
             font-weight: 600;
-            color: var(--text-color);
-            background-color: var(--secondary-color);
-            border: none;
+            color: var(--text-primary);
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
             border-radius: var(--border-radius-md);
             cursor: pointer;
-            transition: background-color 0.3s ease, transform 0.1s ease;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
             white-space: nowrap;
+            overflow: hidden;
+            box-shadow: var(--shadow-xs);
+            letter-spacing: 0.02em;
+        }
+
+        .button::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: var(--primary-gradient);
+            opacity: 0;
+            transition: opacity 0.4s ease;
+            border-radius: inherit;
+            z-index: -1;
+        }
+
+        .button::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 0;
+            height: 0;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.2);
+            transform: translate(-50%, -50%);
+            transition: width 0.6s ease, height 0.6s ease;
         }
 
         .button:hover {
-            background-color: var(--secondary-hover-color);
-            transform: translateY(-2px);
+            transform: translateY(-3px);
+            box-shadow: var(--shadow-md), 0 0 20px rgba(102, 126, 234, 0.3);
+            border-color: var(--glass-border-strong);
+            background: var(--glass-bg-hover);
+        }
+
+        .button:hover::before {
+            opacity: 0.2;
         }
 
         .button:active {
-            transform: translateY(0);
+            transform: translateY(-1px);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .button:active::after {
+            width: 200px;
+            height: 200px;
+            opacity: 0;
         }
 
         #audioMotionContainer {
@@ -158,6 +386,7 @@
             height: 100%;
             z-index: 1;
             pointer-events: none;
+            opacity: 0.8;
         }
 
         /* Recent Users Bar */
@@ -166,38 +395,91 @@
             left: 0;
             right: 0;
             bottom: 0;
-            display: none; /* hidden until >= 2 entries */
+            display: none;
             align-items: center;
-            gap: 0.5rem;
-            padding: 0.5rem 0.75rem env(safe-area-inset-bottom);
-            background: rgba(0, 0, 0, 0.35);
-            backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
-            z-index: 4;
+            gap: var(--spacing-xs);
+            padding: var(--spacing-sm) var(--spacing-md) calc(var(--spacing-sm) + env(safe-area-inset-bottom));
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-top: 1px solid var(--glass-border);
+            z-index: 20;
             overflow-x: auto;
             scrollbar-width: thin;
+            scrollbar-color: rgba(102, 126, 234, 0.5) transparent;
         }
+
+        .recent-users-bar::-webkit-scrollbar {
+            height: 6px;
+        }
+
+        .recent-users-bar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .recent-users-bar::-webkit-scrollbar-thumb {
+            background: rgba(102, 126, 234, 0.5);
+            border-radius: 3px;
+        }
+
         .recent-users-track {
             display: flex;
             align-items: center;
-            gap: 0.5rem;
+            gap: var(--spacing-xs);
             width: 100%;
         }
+
         .avatar-chip {
             position: relative;
-            width: 44px;
-            height: 44px;
+            width: 52px;
+            height: 52px;
             flex: 0 0 auto;
-            border-radius: 999px;
-            overflow: hidden;
-            box-shadow: 0 2px 6px var(--shadow-medium);
+            border-radius: 50%;
+            overflow: visible;
+            box-shadow: var(--shadow-sm), 0 0 0 2px var(--glass-border);
             cursor: pointer;
             outline: none;
-            border: 2px solid transparent;
-            transition: transform 150ms ease;
+            border: 3px solid transparent;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            background: var(--glass-bg);
         }
-        .avatar-chip:hover { transform: translateY(-1px); }
-        .avatar-chip:focus-visible { border-color: var(--primary-color); }
+
+        .avatar-chip::before {
+            content: '';
+            position: absolute;
+            inset: -3px;
+            border-radius: 50%;
+            padding: 3px;
+            background: var(--primary-gradient);
+            -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor;
+            mask-composite: exclude;
+            opacity: 0;
+            transition: opacity 0.4s ease;
+        }
+        
+        .avatar-chip > img,
+        .avatar-chip > .avatar-initials {
+            border-radius: 50%;
+            overflow: hidden;
+        }
+
+        .avatar-chip:hover {
+            transform: translateY(-4px) scale(1.08);
+            box-shadow: var(--shadow-md), 0 0 25px rgba(102, 126, 234, 0.5);
+            border-color: rgba(102, 126, 234, 0.6);
+        }
+
+        .avatar-chip:hover::before {
+            opacity: 1;
+        }
+
+        .avatar-chip:focus-visible {
+            border-color: rgba(102, 126, 234, 0.8);
+            outline: 2px solid rgba(102, 126, 234, 0.3);
+            outline-offset: 2px;
+        }
+
         .avatar-chip img {
             width: 100%;
             height: 100%;
@@ -205,104 +487,190 @@
             object-fit: cover;
             object-position: center;
         }
+
         .avatar-chip .avatar-initials {
             width: 100%;
             height: 100%;
             display: flex;
-            object-fit: cover;
         }
+
         .avatar-initials {
             display: flex;
             align-items: center;
             justify-content: center;
             font-weight: 700;
+            font-size: 0.875rem;
             color: #fff;
-            letter-spacing: 0.3px;
+            letter-spacing: 0.5px;
         }
+
         .avatar-delete {
             position: absolute;
-            right: -4px;
-            bottom: -4px;
-            width: 18px;
-            height: 18px;
+            right: -5px;
+            top: -5px;
+            width: 24px;
+            height: 24px;
             border-radius: 50%;
-            background: rgba(0,0,0,0.7);
+            background: var(--accent-gradient);
             color: #fff;
-            font-size: 12px;
-            line-height: 18px;
+            font-size: 13px;
+            font-weight: 700;
+            line-height: 24px;
             text-align: center;
-            border: 1px solid rgba(255,255,255,0.25);
+            border: 3px solid var(--background);
             display: none;
-            z-index: 10;
+            z-index: 20;
             cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: var(--shadow-sm), 0 0 15px rgba(240, 147, 251, 0.6);
         }
-        @media (pointer: fine) {
-            .avatar-chip:hover .avatar-delete { display: block; }
+
+        .avatar-delete::before {
+            content: '';
+            position: absolute;
+            inset: -2px;
+            border-radius: 50%;
+            background: inherit;
+            filter: blur(8px);
+            opacity: 0.5;
+            z-index: -1;
         }
+
+        .avatar-delete:hover {
+            transform: scale(1.2) rotate(90deg);
+            box-shadow: var(--shadow-md), 0 0 25px rgba(240, 147, 251, 0.9);
+        }
+
+        .avatar-chip:hover .avatar-delete {
+            display: flex !important;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* For touch devices, show delete on active/press */
+        .avatar-chip:active .avatar-delete {
+            display: flex !important;
+            align-items: center;
+            justify-content: center;
+        }
+
         @media (prefers-reduced-motion: reduce) {
-            .avatar-chip { transition: none; }
+            * {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
         }
 
         @media (max-width: 768px) {
-            header,
-            main,
-            .button-container {
-                padding-left: var(--spacing-md);
-                padding-right: var(--spacing-md);
-            }
-
             h1 {
-                font-size: 2rem;
-            }
-            
-            .user-info {
-                font-size: 0.9rem;
+                font-size: clamp(1.8rem, 5vw, 2.5rem);
             }
 
-            #status {
-                font-size: 1.2rem;
+            header {
+                padding: var(--spacing-md);
+            }
+
+            main {
+                padding: 0 var(--spacing-md);
+            }
+
+            .button-container {
+                padding: var(--spacing-md);
+                gap: var(--spacing-xs);
+            }
+
+            body.has-users-bar .button-container {
+                padding-bottom: calc(var(--spacing-md) + 80px);
             }
 
             .button {
-                padding: 0.6rem 1.2rem;
-                font-size: 1rem;
+                padding: 0.75rem 1.5rem;
+                font-size: 0.875rem;
             }
 
-            .button-container {
-                gap: 0.75rem;
+            .avatar-chip {
+                width: 48px;
+                height: 48px;
+            }
+
+            .media-container {
+                max-width: 95vw;
+                max-height: 60vh;
+            }
+
+            #status {
+                padding: var(--spacing-xs) var(--spacing-md);
+                font-size: 0.875rem;
             }
         }
 
         @media (max-width: 480px) {
-            header,
-            main,
-            .button-container {
-                padding-left: var(--spacing-sm);
-                padding-right: var(--spacing-sm);
+            :root {
+                --spacing-lg: 1.5rem;
+                --spacing-md: 1rem;
+                --spacing-sm: 0.75rem;
             }
 
             h1 {
-                font-size: 1.7rem;
+                font-size: clamp(1.5rem, 5vw, 2rem);
+                margin-bottom: var(--spacing-xs);
             }
 
-            .user-info {
-                font-size: 0.8rem;
+            header {
+                padding: var(--spacing-md) var(--spacing-sm);
             }
 
-            #status {
-                font-size: 1rem;
-            }
-
-            .button {
-                padding: 0.5rem 1rem;
-                font-size: 0.9rem;
+            main {
+                padding: 0 var(--spacing-sm);
             }
 
             .button-container {
-                flex-direction: column;
-                align-items: center;
+                padding: var(--spacing-sm);
                 gap: 0.5rem;
-                width: auto;
+            }
+
+            body.has-users-bar .button-container {
+                padding-bottom: calc(var(--spacing-sm) + 80px);
+            }
+
+            .button {
+                padding: 0.65rem 1.25rem;
+                font-size: 0.8125rem;
+                flex: 1 1 auto;
+                min-width: 0;
+            }
+
+            .user-info {
+                font-size: 0.75rem;
+                padding: 0.375rem var(--spacing-sm);
+            }
+
+            .avatar-chip {
+                width: 44px;
+                height: 44px;
+            }
+
+            .avatar-delete {
+                width: 22px;
+                height: 22px;
+                font-size: 12px;
+                line-height: 22px;
+                border: 2px solid var(--background);
+            }
+
+            .recent-users-bar {
+                padding: var(--spacing-xs) var(--spacing-sm);
+            }
+
+            .media-container {
+                max-width: 100vw;
+                max-height: 55vh;
+            }
+
+            #status {
+                padding: 0.5rem var(--spacing-sm);
+                font-size: 0.8125rem;
             }
         }
     </style>
@@ -311,25 +679,26 @@
     <header>
         <h1>WebBridgeBot</h1>
         <div class="user-info">
-            <span>👤 User: {{.User.FirstName}}</span>
-            {{if .User.LastName}}<span> {{.User.LastName}}</span>{{end}}
-            {{if .User.Username}}<span> (@{{.User.Username}})</span>{{end}}
-            <span> - ID: {{.User.UserID}}</span>
+            <span>{{.User.FirstName}}{{if .User.LastName}} {{.User.LastName}}{{end}}</span>
+            {{if .User.Username}}<span>•</span><span>@{{.User.Username}}</span>{{end}}
+            <span>•</span><span>ID: {{.User.UserID}}</span>
         </div>
     </header>
     <p id="status">Waiting for media...</p>
 
     <main>
-        <video id="videoPlayer" controls></video>
-        <audio id="audioPlayer" controls></audio>
-        <img id="imageViewer" alt="Displayed media" />
+        <div class="media-container">
+            <video id="videoPlayer" controls></video>
+            <audio id="audioPlayer" controls></audio>
+            <img id="imageViewer" alt="Displayed media" />
+        </div>
     </main>
 
     <div class="button-container">
-        <button id="reloadButton" class="button">Reload</button>
-        <button id="fullscreenButton" class="button">Fullscreen</button>
-        <button id="backwardButton" class="button">⏪ 10s</button>
-        <button id="forwardButton" class="button">⏩ 10s</button>
+        <button id="reloadButton" class="button">↻ Reload</button>
+        <button id="fullscreenButton" class="button">⛶ Fullscreen</button>
+        <button id="backwardButton" class="button">⏪ -10s</button>
+        <button id="forwardButton" class="button">+10s ⏩</button>
     </div>
 
     <div id="audioMotionContainer"></div>
@@ -405,7 +774,13 @@
                 dom.statusText.textContent = message;
                 dom.statusText.style.color = type === 'error' ? 'var(--error-color)' :
                                              type === 'info' ? 'var(--info-color)' :
-                                             'var(--subtle-text-color)';
+                                             type === 'success' ? 'var(--success-color)' :
+                                             'var(--text-secondary)';
+                
+                // Add pulse animation
+                dom.statusText.classList.remove('pulse');
+                void dom.statusText.offsetWidth; // Trigger reflow
+                dom.statusText.classList.add('pulse');
             };
 
             const hideAllMediaPlayers = () => {
@@ -756,8 +1131,13 @@
                 const list = load();
                 const currentID = String({{.User.ChatID}});
                 track.innerHTML = '';
-                if (list.length < 2) { bar.style.display = 'none'; return; }
+                if (list.length < 2) { 
+                    bar.style.display = 'none';
+                    document.body.classList.remove('has-users-bar');
+                    return; 
+                }
                 bar.style.display = 'flex';
+                document.body.classList.add('has-users-bar');
 
                 list.forEach(item => {
                     const chatID = String(item.chatID);
