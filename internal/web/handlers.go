@@ -113,7 +113,19 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create a TelegramReader to stream the content
+	// For large video files (>100MB) without a Range header, force a small initial chunk
+	// This must be done BEFORE creating the TelegramReader to avoid Content-Length mismatch
+	const largeFileThreshold = 100 * 1024 * 1024 // 100MB
+	if rangeHeader == "" && contentLength > largeFileThreshold && strings.HasPrefix(file.MimeType, "video/") {
+		// Send only the first 5MB to encourage range requests
+		end = 5*1024*1024 - 1
+		if end >= contentLength {
+			end = contentLength - 1
+		}
+		s.logger.Printf("Large video file detected (%d bytes). Serving initial chunk for message ID %d: bytes 0-%d/%d", contentLength, messageID, end, contentLength)
+	}
+
+	// Create a TelegramReader to stream the content with the correct range
 	lr, err := reader.NewTelegramReader(context.Background(), s.tgClient, file.Location, start, end, contentLength, s.config.BinaryCache, s.logger)
 	if err != nil {
 		s.logger.Printf("Error creating Telegram reader for message ID %d: %v", messageID, err)
@@ -127,15 +139,8 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", file.MimeType)
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`inline; filename="%s"`, file.FileName))
 
-	// For large video files (>100MB) without a Range header, force a small initial chunk
-	const largeFileThreshold = 100 * 1024 * 1024 // 100MB
 	if rangeHeader == "" && contentLength > largeFileThreshold && strings.HasPrefix(file.MimeType, "video/") {
-		// Send only the first 5MB to encourage range requests
-		end = 5*1024*1024 - 1
-		if end >= contentLength {
-			end = contentLength - 1
-		}
-		s.logger.Printf("Large video file detected (%d bytes). Serving initial chunk for message ID %d: bytes 0-%d/%d", contentLength, messageID, end, contentLength)
+		// We already adjusted 'end' above, now set headers for partial content
 		w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, contentLength))
 		w.Header().Set("Content-Length", strconv.FormatInt(end-start+1, 10))
 		w.WriteHeader(http.StatusPartialContent)
