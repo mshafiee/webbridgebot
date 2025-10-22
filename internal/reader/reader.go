@@ -181,7 +181,9 @@ func (r *telegramReader) chunk(offset int64, limit int64) ([]byte, error) {
 	// Attempt to read the entire logical chunk from cache first.
 	cachedLogicalChunk, err := r.cache.readChunk(locationID, cacheChunkID)
 	if err == nil {
-		r.log.Printf("Cache hit for logical chunk %d (location %d).", cacheChunkID, locationID)
+		if r.debugMode {
+			r.log.Debugf("Cache hit for logical chunk %d (location %d).", cacheChunkID, locationID)
+		}
 		// If cached data is found, ensure we return only up to the requested `limit`.
 		if int64(len(cachedLogicalChunk)) >= limit {
 			return cachedLogicalChunk[:limit], nil
@@ -190,7 +192,9 @@ func (r *telegramReader) chunk(offset int64, limit int64) ([]byte, error) {
 		return cachedLogicalChunk, nil
 	}
 
-	r.log.Printf("Cache miss for logical chunk %d (location %d), requesting from Telegram API.", cacheChunkID, locationID)
+	if r.debugMode {
+		r.log.Debugf("Cache miss for logical chunk %d (location %d), requesting from Telegram API.", cacheChunkID, locationID)
+	}
 
 	req := &tg.UploadGetFileRequest{
 		Offset:   offset,
