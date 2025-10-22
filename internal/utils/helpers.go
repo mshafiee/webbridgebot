@@ -157,6 +157,131 @@ func FileFromMedia(media tg.MessageMediaClass) (*types.DocumentFile, error) {
 			Height:   largestHeight,
 			Duration: 0,
 		}, nil
+	case *tg.MessageMediaWebPage:
+		// Extract media from webpage if available
+		webpage, ok := media.Webpage.(*tg.WebPage)
+		if !ok {
+			return nil, fmt.Errorf("webpage is empty or not a valid type")
+		}
+		
+		// Check if webpage contains embedded document (video, audio, file)
+		if webpage.Document != nil {
+			if doc, ok := webpage.Document.(*tg.Document); ok {
+				var fileName string
+				var videoWidth, videoHeight, videoDuration int
+				var audioTitle, audioPerformer string
+				var audioDuration int
+				var isVoice, isAnimation bool
+
+				// Extract metadata from document attributes
+				for _, attribute := range doc.Attributes {
+					switch attr := attribute.(type) {
+					case *tg.DocumentAttributeFilename:
+						fileName = attr.FileName
+					case *tg.DocumentAttributeVideo:
+						videoWidth = attr.W
+						videoHeight = attr.H
+						videoDuration = int(attr.Duration)
+					case *tg.DocumentAttributeAudio:
+						audioDuration = int(attr.Duration)
+						audioTitle = attr.Title
+						audioPerformer = attr.Performer
+						isVoice = attr.Voice
+					case *tg.DocumentAttributeAnimated:
+						isAnimation = true
+					}
+				}
+
+				// Use webpage title as filename if not available
+				if fileName == "" && webpage.Title != "" {
+					fileName = webpage.Title
+				}
+
+				// Determine the final duration
+				finalDuration := videoDuration
+				if finalDuration == 0 {
+					finalDuration = audioDuration
+				}
+
+				return &types.DocumentFile{
+					ID:          doc.ID,
+					Location:    doc.AsInputDocumentFileLocation(),
+					FileSize:    doc.Size,
+					FileName:    fileName,
+					MimeType:    doc.MimeType,
+					Width:       videoWidth,
+					Height:      videoHeight,
+					Duration:    finalDuration,
+					Title:       audioTitle,
+					Performer:   audioPerformer,
+					IsVoice:     isVoice,
+					IsAnimation: isAnimation,
+				}, nil
+			}
+		}
+		
+		// Check if webpage contains embedded photo
+		if webpage.Photo != nil {
+			if photo, ok := webpage.Photo.(*tg.Photo); ok {
+				var (
+					largestSize     *tg.PhotoSize
+					largestWidth    int
+					largestHeight   int
+					largestFileSize int64
+				)
+				for _, size := range photo.GetSizes() {
+					if s, ok := size.(*tg.PhotoSize); ok {
+						if s.W > largestWidth {
+							largestWidth = s.W
+							largestHeight = s.H
+							largestSize = s
+							largestFileSize = int64(s.Size)
+						}
+					}
+				}
+				if largestSize == nil {
+					return nil, fmt.Errorf("no suitable full-size photo found in webpage")
+				}
+				
+				photoFileLocation := &tg.InputPhotoFileLocation{
+					ID:            photo.ID,
+					AccessHash:    photo.AccessHash,
+					FileReference: photo.FileReference,
+					ThumbSize:     largestSize.GetType(),
+				}
+				
+				fileName := fmt.Sprintf("webpage_photo_%d.jpg", photo.ID)
+				if webpage.Title != "" {
+					fileName = webpage.Title + ".jpg"
+				}
+				
+				mimeType := "image/jpeg"
+				switch largestSize.GetType() {
+				case "j":
+					mimeType = "image/jpeg"
+				case "p":
+					mimeType = "image/png"
+				case "w":
+					mimeType = "image/webp"
+				case "g":
+					mimeType = "image/gif"
+				}
+				
+				return &types.DocumentFile{
+					ID:       photo.ID,
+					Location: photoFileLocation,
+					FileSize: largestFileSize,
+					FileName: fileName,
+					MimeType: mimeType,
+					Width:    largestWidth,
+					Height:   largestHeight,
+					Duration: 0,
+				}, nil
+			}
+		}
+		
+		// If no media found in webpage, return error
+		return nil, fmt.Errorf("webpage does not contain any extractable media (document or photo)")
 	default:
 		return nil, fmt.Errorf("unsupported media type: %T", media)
 	}
