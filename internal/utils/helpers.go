@@ -255,23 +255,23 @@ func FileFromMedia(media tg.MessageMediaClass) (*types.DocumentFile, error) {
 			switch wp := media.Webpage.(type) {
 			case *tg.WebPageEmpty:
 				// Debug: Log the empty webpage details
-				fmt.Printf("[DEBUG] WebPageEmpty detected - ID: %d\n", wp.ID)
+				fmt.Printf("WebPageEmpty detected - ID: %d\n", wp.ID)
 				return nil, fmt.Errorf("webpage is empty (WebPageEmpty) - ID: %d", wp.ID)
 			case *tg.WebPagePending:
-				fmt.Printf("[DEBUG] WebPagePending detected - ID: %d, Date: %d\n", wp.ID, wp.Date)
+				fmt.Printf("WebPagePending detected - ID: %d, Date: %d\n", wp.ID, wp.Date)
 				return nil, fmt.Errorf("webpage is pending (WebPagePending)")
 			case *tg.WebPageNotModified:
 				return nil, fmt.Errorf("webpage is not modified (WebPageNotModified)")
 			default:
-				fmt.Printf("[DEBUG] Unexpected webpage type: %T, Value: %+v\n", wp, wp)
+				fmt.Printf("Unexpected webpage type: %T, Value: %+v\n", wp, wp)
 				return nil, fmt.Errorf("unexpected webpage type: %T", wp)
 			}
 		}
 
 		// Debug: Log webpage details
-		fmt.Printf("[DEBUG] WebPage found - ID: %d, URL: %s, Type: %s, Title: %s\n",
+		fmt.Printf("WebPage found - ID: %d, URL: %s, Type: %s, Title: %s\n",
 			webpage.ID, webpage.URL, webpage.Type, webpage.Title)
-		fmt.Printf("[DEBUG] WebPage - HasDocument: %v, HasPhoto: %v\n",
+		fmt.Printf("WebPage - HasDocument: %v, HasPhoto: %v\n",
 			webpage.Document != nil, webpage.Photo != nil)
 
 		// Check if webpage contains embedded document (video, audio, file)

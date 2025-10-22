@@ -99,7 +99,7 @@ func NewTelegramReader(ctx context.Context, client *gotgproto.Client, location t
 		maxDelay:      time.Duration(maxRetryDelay) * time.Second,
 	}
 	if r.debugMode {
-		r.log.Println("[DEBUG] Initializing TelegramReader.")
+		r.log.Debug("Initializing TelegramReader.")
 	}
 	r.next = r.partStream()
 	return r, nil
@@ -225,7 +225,7 @@ func (r *telegramReader) downloadAndCacheChunk(req *tg.UploadGetFileRequest, cac
 		mu.Unlock()
 
 		if r.debugMode {
-			r.log.Printf("[DEBUG] Sending UploadGetFileRequest for chunk %d (location %d): Offset=%d, Limit=%d, LocationType=%T",
+			r.log.Debugf("Sending UploadGetFileRequest for chunk %d (location %d): Offset=%d, Limit=%d, LocationType=%T",
 				cacheChunkID, locationID, req.Offset, req.Limit, req.Location)
 		}
 
@@ -294,7 +294,7 @@ func (r *telegramReader) partStream() func() ([]byte, error) {
 		}
 
 		if r.debugMode {
-			r.log.Printf("[DEBUG] Requesting chunk: Offset=%d, Limit=%d (using fixed preferredChunkSize)",
+			r.log.Debugf("Requesting chunk: Offset=%d, Limit=%d (using fixed preferredChunkSize)",
 				currentAPIOffset, limitToRequest)
 		}
 
@@ -403,7 +403,7 @@ func checkCircuitBreaker(chunkKey string, log *logger.Logger) bool {
 
 	// If circuit is open (blocked), check if timeout has expired
 	if now.Before(state.blockedUntil) {
-		log.Warningf("Circuit breaker OPEN for chunk %s: blocked until %v (attempt blocked)", 
+		log.Warningf("Circuit breaker OPEN for chunk %s: blocked until %v (attempt blocked)",
 			chunkKey, state.blockedUntil.Format(time.RFC3339))
 		return true
 	}

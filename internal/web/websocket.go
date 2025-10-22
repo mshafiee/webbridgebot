@@ -85,13 +85,13 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, "Invalid chat ID", http.StatusBadRequest)
 		if s.config.DebugMode {
-			s.logger.Printf("[DEBUG] WebSocket: Invalid chat ID in request from %s", r.RemoteAddr)
+			s.logger.Debugf("WebSocket: Invalid chat ID in request from %s", r.RemoteAddr)
 		}
 		return
 	}
 
 	if s.config.DebugMode {
-		s.logger.Printf("[DEBUG] WebSocket connection attempt from %s for chat ID %d", r.RemoteAddr, chatID)
+		s.logger.Debugf("WebSocket connection attempt from %s for chat ID %d", r.RemoteAddr, chatID)
 	}
 
 	// Authorize user based on chatID (assuming chatID from URL is the user's ID in private chat)
@@ -100,7 +100,7 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unauthorized WebSocket connection: User not found or not authorized.", http.StatusUnauthorized)
 		s.logger.Printf("Unauthorized WebSocket connection attempt for chatID %d: User not found or not authorized (%v)", chatID, err)
 		if s.config.DebugMode {
-			s.logger.Printf("[DEBUG] WebSocket: Authorization failed for chat ID %d from %s", chatID, r.RemoteAddr)
+			s.logger.Debugf("WebSocket: Authorization failed for chat ID %d from %s", chatID, r.RemoteAddr)
 		}
 		return
 	}

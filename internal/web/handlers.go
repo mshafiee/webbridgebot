@@ -28,7 +28,7 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 	s.logger.Printf("Received request to stream file with message ID: %s from client %s", messageIDStr, r.RemoteAddr)
 
 	if s.config.DebugMode {
-		s.logger.Printf("[DEBUG] Stream request details - MessageID: %s, Hash: %s, Range: %s, User-Agent: %s",
+		s.logger.Debugf("Stream request details - MessageID: %s, Hash: %s, Range: %s, User-Agent: %s",
 			messageIDStr, authHash, r.Header.Get("Range"), r.Header.Get("User-Agent"))
 	}
 
@@ -42,21 +42,21 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 
 	// Fetch the file information from Telegram (or cache)
 	if s.config.DebugMode {
-		s.logger.Printf("[DEBUG] Fetching file information for message ID %d", messageID)
+		s.logger.Debugf("Fetching file information for message ID %d", messageID)
 	}
 
 	file, err := utils.FileFromMessage(ctx, s.tgClient, messageID)
 	if err != nil {
 		s.logger.Printf("Error fetching file for message ID %d: %v", messageID, err)
 		if s.config.DebugMode {
-			s.logger.Printf("[DEBUG] File fetch failed for message ID %d: %v", messageID, err)
+			s.logger.Debugf("File fetch failed for message ID %d: %v", messageID, err)
 		}
 		http.Error(w, "Unable to retrieve file for the specified message", http.StatusBadRequest)
 		return
 	}
 
 	if s.config.DebugMode {
-		s.logger.Printf("[DEBUG] File retrieved: %s (%d bytes)", file.FileName, file.FileSize)
+		s.logger.Debugf("File retrieved: %s (%d bytes)", file.FileName, file.FileSize)
 	}
 
 	// Hash verification
@@ -64,14 +64,14 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 	if !utils.CheckHash(authHash, expectedHash, s.config.HashLength) {
 		s.logger.Printf("Hash verification failed for message ID %d from client %s", messageID, r.RemoteAddr)
 		if s.config.DebugMode {
-			s.logger.Printf("[DEBUG] Hash mismatch - Expected: %s..., Got: %s", expectedHash[:10], authHash)
+			s.logger.Debugf("Hash mismatch - Expected: %s..., Got: %s", expectedHash[:10], authHash)
 		}
 		http.Error(w, "Invalid authentication hash", http.StatusBadRequest)
 		return
 	}
 
 	if s.config.DebugMode {
-		s.logger.Printf("[DEBUG] Hash verification passed for message ID %d", messageID)
+		s.logger.Debugf("Hash verification passed for message ID %d", messageID)
 	}
 
 	contentLength := file.FileSize
@@ -160,7 +160,7 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 		// These errors are expected if the client disconnects
 		if isClientDisconnectError(err) {
 			if s.config.DebugMode {
-				s.logger.Printf("[DEBUG] Client disconnected during stream for message ID %d from %s", messageID, r.RemoteAddr)
+				s.logger.Debugf("Client disconnected during stream for message ID %d from %s", messageID, r.RemoteAddr)
 			}
 		} else {
 			s.logger.Printf("Error streaming content for message ID %d: %v", messageID, err)
@@ -357,7 +357,7 @@ func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if s.config.DebugMode {
-		s.logger.Printf("[DEBUG] Proxy request for URL: %s", externalURL)
+		s.logger.Debugf("Proxy request for URL: %s", externalURL)
 	}
 
 	// Create HTTP client with timeout
@@ -379,7 +379,7 @@ func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
 	if contentType != "" && strings.Contains(strings.ToLower(contentType), "text/html") {
 		s.logger.Printf("Warning: External URL %s returned HTML (file hosting page) instead of media. Content-Type: %s", externalURL, contentType)
 		if s.config.DebugMode {
-			s.logger.Printf("[DEBUG] This appears to be a file hosting page, not a direct media URL")
+			s.logger.Debugf("This appears to be a file hosting page, not a direct media URL")
 		}
 	}
 
@@ -409,11 +409,11 @@ func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
 	// Stream the response
 	_, err = io.Copy(w, resp.Body)
 	if err != nil && s.config.DebugMode {
-		s.logger.Printf("[DEBUG] Error streaming proxied content: %v", err)
+		s.logger.Debugf("Error streaming proxied content: %v", err)
 	}
 
 	if s.config.DebugMode {
-		s.logger.Printf("[DEBUG] Proxy completed for URL: %s", externalURL)
+		s.logger.Debugf("Proxy completed for URL: %s", externalURL)
 	}
 }
 

@@ -135,7 +135,7 @@ func (b *TelegramBot) handleStartCommand(ctx *ext.Context, u *ext.Update) error 
 	b.logger.Printf("📥 Received /start command from user: %s (ID: %d) in chat: %d", user.FirstName, user.ID, chatID)
 
 	if b.config.DebugMode {
-		b.logger.Printf("[DEBUG] /start command - User: %s %s, Username: @%s, ChatID: %d",
+		b.logger.Debugf("/start command - User: %s %s, Username: @%s, ChatID: %d",
 			user.FirstName, user.LastName, user.Username, chatID)
 	}
 
@@ -370,7 +370,7 @@ func (b *TelegramBot) handleDeauthorizeUser(ctx *ext.Context, u *ext.Update) err
 func (b *TelegramBot) handleAnyUpdate(ctx *ext.Context, u *ext.Update) error {
 	// This handler logs all incoming updates for monitoring and debugging
 	if b.config.DebugMode {
-		b.logger.Printf("[DEBUG] Received update from user")
+		b.logger.Debugf("Received update from user")
 
 		if u.EffectiveMessage != nil {
 			user := u.EffectiveUser()
@@ -378,15 +378,15 @@ func (b *TelegramBot) handleAnyUpdate(ctx *ext.Context, u *ext.Update) error {
 			message := u.EffectiveMessage
 
 			// Log basic message info
-			b.logger.Printf("[DEBUG] Message from user: %s %s (ID: %d, Username: @%s) in chat: %d",
+			b.logger.Debugf("Message from user: %s %s (ID: %d, Username: @%s) in chat: %d",
 				user.FirstName, user.LastName, user.ID, user.Username, chatID)
 
 			// Log message ID and date
-			b.logger.Printf("[DEBUG] Message ID: %d, Date: %d", message.Message.ID, message.Message.Date)
+			b.logger.Debugf("Message ID: %d, Date: %d", message.Message.ID, message.Message.Date)
 
 			// Check if forwarded
 			if fwdFrom, isForwarded := message.Message.GetFwdFrom(); isForwarded {
-				b.logger.Printf("[DEBUG] ⏩ FORWARDED message - Original date: %d, FromID: %v, FromName: %s",
+				b.logger.Debugf("⏩ FORWARDED message - Original date: %d, FromID: %v, FromName: %s",
 					fwdFrom.Date, fwdFrom.FromID, fwdFrom.FromName)
 			}
 
@@ -397,24 +397,24 @@ func (b *TelegramBot) handleAnyUpdate(ctx *ext.Context, u *ext.Update) error {
 				if len(textPreview) > 100 {
 					textPreview = textPreview[:100] + "..."
 				}
-				b.logger.Printf("[DEBUG] 💬 Text message: \"%s\"", textPreview)
+				b.logger.Debugf("💬 Text message: \"%s\"", textPreview)
 			}
 
 			// Log media type if present
 			if message.Message.Media != nil {
 				mediaType := fmt.Sprintf("%T", message.Message.Media)
-				b.logger.Printf("[DEBUG] 📎 Media attached - Type: %s", mediaType)
+				b.logger.Debugf("📎 Media attached - Type: %s", mediaType)
 
 				// Log specific media details
 				switch media := message.Message.Media.(type) {
 				case *tg.MessageMediaDocument:
 					if doc, ok := media.Document.AsNotEmpty(); ok {
-						b.logger.Printf("[DEBUG]    Document ID: %d, Size: %d bytes, MimeType: %s",
+						b.logger.Debugf("   Document ID: %d, Size: %d bytes, MimeType: %s",
 							doc.ID, doc.Size, doc.MimeType)
 					}
 				case *tg.MessageMediaPhoto:
 					if photo, ok := media.Photo.AsNotEmpty(); ok {
-						b.logger.Printf("[DEBUG]    Photo ID: %d, HasStickers: %t",
+						b.logger.Debugf("   Photo ID: %d, HasStickers: %t",
 							photo.ID, photo.HasStickers)
 					}
 				}
@@ -423,19 +423,19 @@ func (b *TelegramBot) handleAnyUpdate(ctx *ext.Context, u *ext.Update) error {
 			// Log reply information if present
 			if replyTo, ok := message.Message.GetReplyTo(); ok {
 				if replyMsg, ok := replyTo.(*tg.MessageReplyHeader); ok {
-					b.logger.Printf("[DEBUG] 💬 Reply to message ID: %d", replyMsg.ReplyToMsgID)
+					b.logger.Debugf("💬 Reply to message ID: %d", replyMsg.ReplyToMsgID)
 				}
 			}
 
 			// Log if message has buttons/markup
 			if markup, ok := message.Message.GetReplyMarkup(); ok {
-				b.logger.Printf("[DEBUG] 🔘 Message has reply markup: %T", markup)
+				b.logger.Debugf("🔘 Message has reply markup: %T", markup)
 			}
 		}
 
 		// Log callback queries
 		if u.CallbackQuery != nil {
-			b.logger.Printf("[DEBUG] 🔘 Callback query from user %d: %s",
+			b.logger.Debugf("🔘 Callback query from user %d: %s",
 				u.CallbackQuery.UserID, string(u.CallbackQuery.Data))
 		}
 	}
@@ -454,7 +454,7 @@ func (b *TelegramBot) handleMediaMessages(ctx *ext.Context, u *ext.Update) error
 		messageType = "forwarded message"
 		// Debug: Log forwarded message details
 		if b.config.DebugMode {
-			b.logger.Printf("[DEBUG] Forwarded message detected - Date: %d, FromID: %v, FromName: %s",
+			b.logger.Debugf("Forwarded message detected - Date: %d, FromID: %v, FromName: %s",
 				fwdHeader.Date,
 				fwdHeader.FromID,
 				fwdHeader.FromName)
@@ -465,26 +465,26 @@ func (b *TelegramBot) handleMediaMessages(ctx *ext.Context, u *ext.Update) error
 	b.logger.Printf("📥 Received media %s from user: %s (ID: %d) in chat: %d", messageType, user.FirstName, user.ID, chatID)
 
 	if b.config.DebugMode {
-		b.logger.Printf("[DEBUG] Message ID: %d, Media Type: %T", u.EffectiveMessage.Message.ID, u.EffectiveMessage.Message.Media)
+		b.logger.Debugf("Message ID: %d, Media Type: %T", u.EffectiveMessage.Message.ID, u.EffectiveMessage.Message.Media)
 
 		// Log message text and entities
 		if u.EffectiveMessage.Message.Message != "" {
-			b.logger.Printf("[DEBUG] Message text length: %d", len(u.EffectiveMessage.Message.Message))
+			b.logger.Debugf("Message text length: %d", len(u.EffectiveMessage.Message.Message))
 		}
 		if len(u.EffectiveMessage.Message.Entities) > 0 {
-			b.logger.Printf("[DEBUG] Message has %d entities:", len(u.EffectiveMessage.Message.Entities))
+			b.logger.Debugf("Message has %d entities:", len(u.EffectiveMessage.Message.Entities))
 			for i, entity := range u.EffectiveMessage.Message.Entities {
-				b.logger.Printf("[DEBUG]   Entity %d: Type=%T, Offset=%d, Length=%d",
+				b.logger.Debugf("  Entity %d: Type=%T, Offset=%d, Length=%d",
 					i, entity, entity.GetOffset(), entity.GetLength())
 				if urlEntity, ok := entity.(*tg.MessageEntityTextURL); ok {
-					b.logger.Printf("[DEBUG]     URL: %s", urlEntity.URL)
+					b.logger.Debugf("    URL: %s", urlEntity.URL)
 				}
 			}
 		}
 
 		// Log media structure
 		if webPageMedia, ok := u.EffectiveMessage.Message.Media.(*tg.MessageMediaWebPage); ok {
-			b.logger.Printf("[DEBUG] MessageMediaWebPage detected - Webpage type: %T", webPageMedia.Webpage)
+			b.logger.Debugf("MessageMediaWebPage detected - Webpage type: %T", webPageMedia.Webpage)
 		}
 	}
 
@@ -497,7 +497,7 @@ func (b *TelegramBot) handleMediaMessages(ctx *ext.Context, u *ext.Update) error
 		if err == sql.ErrNoRows { // User not in DB
 			b.logger.Printf("User %d not in DB for media message, sending unauthorized message.", chatID)
 			if b.config.DebugMode {
-				b.logger.Printf("[DEBUG] User %s (ID: %d) not found in database. Message type: %s", user.FirstName, chatID, messageType)
+				b.logger.Debugf("User %s (ID: %d) not found in database. Message type: %s", user.FirstName, chatID, messageType)
 			}
 			authorizationMsg := "You are not authorized to use this bot yet. Please ask one of the administrators to authorize you and wait until you receive a confirmation."
 			return b.sendReply(ctx, u, authorizationMsg)
@@ -509,7 +509,7 @@ func (b *TelegramBot) handleMediaMessages(ctx *ext.Context, u *ext.Update) error
 	b.logger.Printf("User %d retrieved for media message. isAuthorized=%t, isAdmin=%t", chatID, existingUser.IsAuthorized, existingUser.IsAdmin)
 
 	if b.config.DebugMode {
-		b.logger.Printf("[DEBUG] User details - Name: %s %s, Username: %s, ChatID: %d",
+		b.logger.Debugf("User details - Name: %s %s, Username: %s, ChatID: %d",
 			existingUser.FirstName, existingUser.LastName, existingUser.Username, existingUser.ChatID)
 	}
 
@@ -522,14 +522,14 @@ func (b *TelegramBot) handleMediaMessages(ctx *ext.Context, u *ext.Update) error
 	// If a log channel is configured, forward the message there.
 	if b.config.LogChannelID != "" && b.config.LogChannelID != "0" {
 		if b.config.DebugMode {
-			b.logger.Printf("[DEBUG] Log channel configured: %s. Starting message forwarding in background.", b.config.LogChannelID)
+			b.logger.Debugf("Log channel configured: %s. Starting message forwarding in background.", b.config.LogChannelID)
 		}
 		go func() { // Run in a goroutine to not block the user response.
 			fromChatID := u.EffectiveChat().GetID()
 			messageID := u.EffectiveMessage.Message.ID
 
 			if b.config.DebugMode {
-				b.logger.Printf("[DEBUG] Forwarding message %d from chat %d to log channel %s", messageID, fromChatID, b.config.LogChannelID)
+				b.logger.Debugf("Forwarding message %d from chat %d to log channel %s", messageID, fromChatID, b.config.LogChannelID)
 			}
 
 			updates, err := utils.ForwardMessages(ctx, fromChatID, b.config.LogChannelID, messageID)
@@ -600,7 +600,7 @@ func (b *TelegramBot) handleMediaMessages(ctx *ext.Context, u *ext.Update) error
 
 	// Check if media type is supported and extract DocumentFile
 	if b.config.DebugMode {
-		b.logger.Printf("[DEBUG] Attempting to extract file information from media for message ID %d", u.EffectiveMessage.Message.ID)
+		b.logger.Debugf("Attempting to extract file information from media for message ID %d", u.EffectiveMessage.Message.ID)
 	}
 
 	file, err := utils.FileFromMedia(u.EffectiveMessage.Message.Media)
@@ -612,7 +612,7 @@ func (b *TelegramBot) handleMediaMessages(ctx *ext.Context, u *ext.Update) error
 				fileURL := utils.ExtractURLFromEntities(u.EffectiveMessage.Message)
 				if fileURL != "" {
 					if b.config.DebugMode {
-						b.logger.Printf("[DEBUG] Extracted URL from message entities: %s", fileURL)
+						b.logger.Debugf("Extracted URL from message entities: %s", fileURL)
 					}
 
 					// Quick check if URL might be a file hosting page
@@ -623,9 +623,9 @@ func (b *TelegramBot) handleMediaMessages(ctx *ext.Context, u *ext.Update) error
 					// Detect MIME type from URL
 					mimeType := utils.DetectMimeTypeFromURL(fileURL)
 					if b.config.DebugMode {
-						b.logger.Printf("[DEBUG] Detected MIME type from URL: %s", mimeType)
+						b.logger.Debugf("Detected MIME type from URL: %s", mimeType)
 						if isFileHosting {
-							b.logger.Printf("[DEBUG] Warning: URL appears to be a file hosting page")
+							b.logger.Debugf("Warning: URL appears to be a file hosting page")
 						}
 					}
 
@@ -655,19 +655,19 @@ func (b *TelegramBot) handleMediaMessages(ctx *ext.Context, u *ext.Update) error
 
 		b.logger.Printf("Error processing media message from chat ID %d, message ID %d: %v", chatID, u.EffectiveMessage.Message.ID, err)
 		if b.config.DebugMode {
-			b.logger.Printf("[DEBUG] Failed to extract file from media type: %T, error: %v", u.EffectiveMessage.Message.Media, err)
+			b.logger.Debugf("Failed to extract file from media type: %T, error: %v", u.EffectiveMessage.Message.Media, err)
 		}
 		return b.sendReply(ctx, u, fmt.Sprintf("Unsupported media type or error processing file: %v", err))
 	}
 
 	if b.config.DebugMode {
-		b.logger.Printf("[DEBUG] File extracted successfully - Name: %s, Size: %d bytes, MimeType: %s, ID: %d",
+		b.logger.Debugf("File extracted successfully - Name: %s, Size: %d bytes, MimeType: %s, ID: %d",
 			file.FileName, file.FileSize, file.MimeType, file.ID)
 		if file.Width > 0 || file.Height > 0 {
-			b.logger.Printf("[DEBUG] Video/Photo dimensions: %dx%d", file.Width, file.Height)
+			b.logger.Debugf("Video/Photo dimensions: %dx%d", file.Width, file.Height)
 		}
 		if file.Duration > 0 {
-			b.logger.Printf("[DEBUG] Media duration: %d seconds", file.Duration)
+			b.logger.Debugf("Media duration: %d seconds", file.Duration)
 		}
 	}
 
@@ -675,7 +675,7 @@ func (b *TelegramBot) handleMediaMessages(ctx *ext.Context, u *ext.Update) error
 	b.logger.Printf("Generated media file URL for message ID %d in chat ID %d: %s (forwarded: %t)", u.EffectiveMessage.Message.ID, chatID, fileURL, isForwarded)
 
 	if b.config.DebugMode {
-		b.logger.Printf("[DEBUG] Sending media to user. Message type: %s, FileURL length: %d", messageType, len(fileURL))
+		b.logger.Debugf("Sending media to user. Message type: %s, FileURL length: %d", messageType, len(fileURL))
 	}
 
 	return b.sendMediaToUser(ctx, u, fileURL, file, isForwarded)
@@ -723,16 +723,16 @@ func (b *TelegramBot) sendMediaToUser(ctx *ext.Context, u *ext.Update, fileURL s
 	if isForwarded {
 		messageText = fmt.Sprintf("%s", fileURL)
 		if b.config.DebugMode {
-			b.logger.Printf("[DEBUG] Using forwarded media message template for chat ID %d", u.EffectiveChat().GetID())
+			b.logger.Debugf("Using forwarded media message template for chat ID %d", u.EffectiveChat().GetID())
 		}
 	} else {
 		if b.config.DebugMode {
-			b.logger.Printf("[DEBUG] Using direct upload message template for chat ID %d", u.EffectiveChat().GetID())
+			b.logger.Debugf("Using direct upload message template for chat ID %d", u.EffectiveChat().GetID())
 		}
 	}
 
 	if b.config.DebugMode {
-		b.logger.Printf("[DEBUG] Sending reply with inline keyboard to user %d. Message text length: %d",
+		b.logger.Debugf("Sending reply with inline keyboard to user %d. Message text length: %d",
 			u.EffectiveUser().ID, len(messageText))
 	}
 
@@ -781,25 +781,25 @@ func (b *TelegramBot) sendMediaToUser(ctx *ext.Context, u *ext.Update, fileURL s
 	if err != nil {
 		b.logger.Printf("Error sending reply for chat ID %d, message ID %d: %v", u.EffectiveChat().GetID(), u.EffectiveMessage.Message.ID, err)
 		if b.config.DebugMode {
-			b.logger.Printf("[DEBUG] Failed to send media message reply: %v", err)
+			b.logger.Debugf("Failed to send media message reply: %v", err)
 		}
 		return err
 	}
 
 	if b.config.DebugMode {
-		b.logger.Printf("[DEBUG] Reply sent successfully. Preparing WebSocket message for chat ID %d", u.EffectiveChat().GetID())
+		b.logger.Debugf("Reply sent successfully. Preparing WebSocket message for chat ID %d", u.EffectiveChat().GetID())
 	}
 
 	wsMsg := b.constructWebSocketMessage(fileURL, file)
 
 	if b.config.DebugMode {
-		b.logger.Printf("[DEBUG] WebSocket message constructed with %d fields. Publishing to chat ID %d", len(wsMsg), u.EffectiveChat().GetID())
+		b.logger.Debugf("WebSocket message constructed with %d fields. Publishing to chat ID %d", len(wsMsg), u.EffectiveChat().GetID())
 	}
 
 	b.webServer.GetWSManager().PublishMessage(u.EffectiveChat().GetID(), wsMsg)
 
 	if b.config.DebugMode {
-		b.logger.Printf("[DEBUG] Media processing completed successfully for message ID %d", u.EffectiveMessage.Message.ID)
+		b.logger.Debugf("Media processing completed successfully for message ID %d", u.EffectiveMessage.Message.ID)
 	}
 
 	return nil
@@ -810,7 +810,7 @@ func (b *TelegramBot) constructWebSocketMessage(fileURL string, file *types.Docu
 	proxiedURL := b.wrapWithProxyIfNeeded(fileURL)
 
 	if b.config.DebugMode && proxiedURL != fileURL {
-		b.logger.Printf("[DEBUG] Wrapped external URL with proxy: %s -> %s", fileURL, proxiedURL)
+		b.logger.Debugf("Wrapped external URL with proxy: %s -> %s", fileURL, proxiedURL)
 	}
 
 	return map[string]string{
@@ -938,11 +938,11 @@ func (b *TelegramBot) handleCallbackQuery(ctx *ext.Context, u *ext.Update) error
 	// Then, check for `cb_ResendToPlayer` which has a specific format with message ID.
 	if strings.HasPrefix(string(u.CallbackQuery.Data), callbackResendToPlayer) {
 		if b.config.DebugMode {
-			b.logger.Printf("[DEBUG] Callback: Processing ResendToPlayer, data: %s", string(u.CallbackQuery.Data))
+			b.logger.Debugf("Callback: Processing ResendToPlayer, data: %s", string(u.CallbackQuery.Data))
 		}
 		dataParts := strings.Split(string(u.CallbackQuery.Data), ",")
 		if b.config.DebugMode {
-			b.logger.Printf("[DEBUG] Callback: Split into %d parts: %v", len(dataParts), dataParts)
+			b.logger.Debugf("Callback: Split into %d parts: %v", len(dataParts), dataParts)
 		}
 		if len(dataParts) > 1 {
 			messageID, err := strconv.Atoi(dataParts[1])
@@ -966,12 +966,12 @@ func (b *TelegramBot) handleCallbackQuery(ctx *ext.Context, u *ext.Update) error
 							extractedURL := utils.ExtractURLFromEntities(message)
 							if extractedURL != "" {
 								if b.config.DebugMode {
-									b.logger.Printf("[DEBUG] Callback: Extracted URL from entities for message %d: %s", messageID, extractedURL)
+									b.logger.Debugf("Callback: Extracted URL from entities for message %d: %s", messageID, extractedURL)
 								}
 								// Detect MIME type from URL
 								mimeType := utils.DetectMimeTypeFromURL(extractedURL)
 								if b.config.DebugMode {
-									b.logger.Printf("[DEBUG] Callback: Detected MIME type: %s", mimeType)
+									b.logger.Debugf("Callback: Detected MIME type: %s", mimeType)
 								}
 								// Create a simple DocumentFile for URL-based media
 								file = &types.DocumentFile{
@@ -981,7 +981,7 @@ func (b *TelegramBot) handleCallbackQuery(ctx *ext.Context, u *ext.Update) error
 								}
 								fileURL = extractedURL
 								if b.config.DebugMode {
-									b.logger.Printf("[DEBUG] Callback: Set fileURL to extracted URL, length: %d", len(fileURL))
+									b.logger.Debugf("Callback: Set fileURL to extracted URL, length: %d", len(fileURL))
 								}
 							}
 						}
@@ -989,7 +989,7 @@ func (b *TelegramBot) handleCallbackQuery(ctx *ext.Context, u *ext.Update) error
 				}
 
 				if b.config.DebugMode {
-					b.logger.Printf("[DEBUG] Callback: After fallback, fileURL length: %d, file is nil: %v", len(fileURL), file == nil)
+					b.logger.Debugf("Callback: After fallback, fileURL length: %d, file is nil: %v", len(fileURL), file == nil)
 				}
 
 				if fileURL == "" {
@@ -1003,24 +1003,24 @@ func (b *TelegramBot) handleCallbackQuery(ctx *ext.Context, u *ext.Update) error
 			} else {
 				fileURL = b.generateFileURL(messageID, file)
 				if b.config.DebugMode {
-					b.logger.Printf("[DEBUG] Callback: Generated Telegram file URL")
+					b.logger.Debugf("Callback: Generated Telegram file URL")
 				}
 			}
 
 			if b.config.DebugMode {
-				b.logger.Printf("[DEBUG] Callback: Constructing WebSocket message with URL: %s, MIME: %s", fileURL, file.MimeType)
+				b.logger.Debugf("Callback: Constructing WebSocket message with URL: %s, MIME: %s", fileURL, file.MimeType)
 			}
 
 			wsMsg := b.constructWebSocketMessage(fileURL, file)
 			b.webServer.GetWSManager().PublishMessage(u.EffectiveChat().GetID(), wsMsg)
 
 			if b.config.DebugMode {
-				b.logger.Printf("[DEBUG] Callback: WebSocket message published successfully")
+				b.logger.Debugf("Callback: WebSocket message published successfully")
 			}
 
 			successMsg := fmt.Sprintf("The %s file has been sent to the web player.", file.FileName)
 			if b.config.DebugMode {
-				b.logger.Printf("[DEBUG] Callback: Sending success answer to Telegram: %s", successMsg)
+				b.logger.Debugf("Callback: Sending success answer to Telegram: %s", successMsg)
 			}
 
 			_, err = ctx.AnswerCallback(&tg.MessagesSetBotCallbackAnswerRequest{
@@ -1029,15 +1029,15 @@ func (b *TelegramBot) handleCallbackQuery(ctx *ext.Context, u *ext.Update) error
 				Message: successMsg,
 			})
 			if err != nil && b.config.DebugMode {
-				b.logger.Printf("[DEBUG] Callback: Error sending answer to Telegram: %v", err)
+				b.logger.Debugf("Callback: Error sending answer to Telegram: %v", err)
 			} else if b.config.DebugMode {
-				b.logger.Printf("[DEBUG] Callback: Success answer sent to Telegram successfully")
+				b.logger.Debugf("Callback: Success answer sent to Telegram successfully")
 			}
 			return nil
 		} else {
 			// Handle case where callback data format is incorrect
 			if b.config.DebugMode {
-				b.logger.Printf("[DEBUG] Callback: Invalid data format for ResendToPlayer, parts: %d", len(dataParts))
+				b.logger.Debugf("Callback: Invalid data format for ResendToPlayer, parts: %d", len(dataParts))
 			}
 			_, _ = ctx.AnswerCallback(&tg.MessagesSetBotCallbackAnswerRequest{
 				QueryID: u.CallbackQuery.QueryID,
