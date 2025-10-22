@@ -159,11 +159,22 @@ func FileFromMedia(media tg.MessageMediaClass) (*types.DocumentFile, error) {
 		}, nil
 	case *tg.MessageMediaWebPage:
 		// Extract media from webpage if available
+		// The Webpage field is of type WebPageClass, need to check its actual type
 		webpage, ok := media.Webpage.(*tg.WebPage)
 		if !ok {
-			return nil, fmt.Errorf("webpage is empty or not a valid type")
+			// Handle other WebPageClass types
+			switch wp := media.Webpage.(type) {
+			case *tg.WebPageEmpty:
+				return nil, fmt.Errorf("webpage is empty (WebPageEmpty)")
+			case *tg.WebPagePending:
+				return nil, fmt.Errorf("webpage is pending (WebPagePending)")
+			case *tg.WebPageNotModified:
+				return nil, fmt.Errorf("webpage is not modified (WebPageNotModified)")
+			default:
+				return nil, fmt.Errorf("unexpected webpage type: %T", wp)
+			}
 		}
-		
+
 		// Check if webpage contains embedded document (video, audio, file)
 		if webpage.Document != nil {
 			if doc, ok := webpage.Document.(*tg.Document); ok {
@@ -219,7 +230,7 @@ func FileFromMedia(media tg.MessageMediaClass) (*types.DocumentFile, error) {
 				}, nil
 			}
 		}
-		
+
 		// Check if webpage contains embedded photo
 		if webpage.Photo != nil {
 			if photo, ok := webpage.Photo.(*tg.Photo); ok {
@@ -242,19 +253,19 @@ func FileFromMedia(media tg.MessageMediaClass) (*types.DocumentFile, error) {
 				if largestSize == nil {
 					return nil, fmt.Errorf("no suitable full-size photo found in webpage")
 				}
-				
+
 				photoFileLocation := &tg.InputPhotoFileLocation{
 					ID:            photo.ID,
 					AccessHash:    photo.AccessHash,
 					FileReference: photo.FileReference,
 					ThumbSize:     largestSize.GetType(),
 				}
-				
+
 				fileName := fmt.Sprintf("webpage_photo_%d.jpg", photo.ID)
 				if webpage.Title != "" {
 					fileName = webpage.Title + ".jpg"
 				}
-				
+
 				mimeType := "image/jpeg"
 				switch largestSize.GetType() {
 				case "j":
@@ -266,7 +277,7 @@ func FileFromMedia(media tg.MessageMediaClass) (*types.DocumentFile, error) {
 				case "g":
 					mimeType = "image/gif"
 				}
-				
+
 				return &types.DocumentFile{
 					ID:       photo.ID,
 					Location: photoFileLocation,
@@ -279,7 +290,7 @@ func FileFromMedia(media tg.MessageMediaClass) (*types.DocumentFile, error) {
 				}, nil
 			}
 		}
-		
+
 		// If no media found in webpage, return error
 		return nil, fmt.Errorf("webpage does not contain any extractable media (document or photo)")
 	default:
