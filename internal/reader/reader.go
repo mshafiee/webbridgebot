@@ -299,6 +299,17 @@ func isTransientError(err error) bool {
 		return true
 	}
 
+	// Check for Telegram API timeout errors (RPC error code -503)
+	errText := err.Error()
+	if regexp.MustCompile(`rpc error code -503`).MatchString(errText) {
+		return true
+	}
+
+	// Check for other Telegram API transient errors (5xx errors)
+	if regexp.MustCompile(`rpc error code -(5\d{2})`).MatchString(errText) {
+		return true
+	}
+
 	// Finally, check the general net.Error interface for temporary/timeout conditions.
 	var netErr net.Error
 	if errors.As(err, &netErr) {
