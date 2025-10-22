@@ -77,9 +77,10 @@ type telegramReader struct {
 	i             int64
 	contentLength int64
 	cache         *BinaryCache
+	debugMode     bool
 }
 
-func NewTelegramReader(ctx context.Context, client *gotgproto.Client, location tg.InputFileLocationClass, start int64, end int64, contentLength int64, cache *BinaryCache, logger *log.Logger) (io.ReadCloser, error) {
+func NewTelegramReader(ctx context.Context, client *gotgproto.Client, location tg.InputFileLocationClass, start int64, end int64, contentLength int64, cache *BinaryCache, logger *log.Logger, debugMode bool) (io.ReadCloser, error) {
 	r := &telegramReader{
 		ctx:           ctx,
 		log:           logger,
@@ -90,8 +91,11 @@ func NewTelegramReader(ctx context.Context, client *gotgproto.Client, location t
 		chunkSize:     preferredChunkSize,
 		contentLength: contentLength,
 		cache:         cache,
+		debugMode:     debugMode,
 	}
-	r.log.Println("Initializing TelegramReader.")
+	if r.debugMode {
+		r.log.Println("[DEBUG] Initializing TelegramReader.")
+	}
 	r.next = r.partStream()
 	return r, nil
 }
@@ -215,8 +219,10 @@ func (r *telegramReader) downloadAndCacheChunk(req *tg.UploadGetFileRequest, cac
 		<-rateLimiter.C
 		mu.Unlock()
 
-		r.log.Printf("DEBUG: Sending UploadGetFileRequest for chunk %d (location %d): Offset=%d, Limit=%d, LocationType=%T",
-			cacheChunkID, locationID, req.Offset, req.Limit, req.Location)
+		if r.debugMode {
+			r.log.Printf("[DEBUG] Sending UploadGetFileRequest for chunk %d (location %d): Offset=%d, Limit=%d, LocationType=%T",
+				cacheChunkID, locationID, req.Offset, req.Limit, req.Location)
+		}
 
 		res, err := r.client.API().UploadGetFile(r.ctx, req)
 		if err != nil {
@@ -282,8 +288,10 @@ func (r *telegramReader) partStream() func() ([]byte, error) {
 			limitToRequest = telegramMaxLimit
 		}
 
-		r.log.Printf("DEBUG: Requesting chunk: Offset=%d, Limit=%d (using fixed preferredChunkSize)",
-			currentAPIOffset, limitToRequest)
+		if r.debugMode {
+			r.log.Printf("[DEBUG] Requesting chunk: Offset=%d, Limit=%d (using fixed preferredChunkSize)",
+				currentAPIOffset, limitToRequest)
+		}
 
 		chunkData, err := r.chunk(currentAPIOffset, limitToRequest)
 		if err != nil {
