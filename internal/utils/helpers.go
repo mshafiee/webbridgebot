@@ -76,6 +76,68 @@ func ExtractURLFromEntities(msg *tg.Message) string {
 	return ""
 }
 
+// DetectMimeTypeFromURL attempts to detect MIME type from URL or returns default audio/mpeg
+func DetectMimeTypeFromURL(url string) string {
+	// Extract file extension from URL
+	urlLower := strings.ToLower(url)
+	
+	// Common audio formats
+	if strings.Contains(urlLower, ".mp3") || strings.HasSuffix(urlLower, ".mp3") {
+		return "audio/mpeg"
+	}
+	if strings.Contains(urlLower, ".m4a") || strings.HasSuffix(urlLower, ".m4a") {
+		return "audio/mp4"
+	}
+	if strings.Contains(urlLower, ".ogg") || strings.HasSuffix(urlLower, ".ogg") {
+		return "audio/ogg"
+	}
+	if strings.Contains(urlLower, ".wav") || strings.HasSuffix(urlLower, ".wav") {
+		return "audio/wav"
+	}
+	if strings.Contains(urlLower, ".flac") || strings.HasSuffix(urlLower, ".flac") {
+		return "audio/flac"
+	}
+	if strings.Contains(urlLower, ".aac") || strings.HasSuffix(urlLower, ".aac") {
+		return "audio/aac"
+	}
+	
+	// Common video formats
+	if strings.Contains(urlLower, ".mp4") || strings.HasSuffix(urlLower, ".mp4") {
+		return "video/mp4"
+	}
+	if strings.Contains(urlLower, ".webm") || strings.HasSuffix(urlLower, ".webm") {
+		return "video/webm"
+	}
+	if strings.Contains(urlLower, ".mkv") || strings.HasSuffix(urlLower, ".mkv") {
+		return "video/x-matroska"
+	}
+	if strings.Contains(urlLower, ".avi") || strings.HasSuffix(urlLower, ".avi") {
+		return "video/x-msvideo"
+	}
+	if strings.Contains(urlLower, ".mov") || strings.HasSuffix(urlLower, ".mov") {
+		return "video/quicktime"
+	}
+	
+	// Common image formats
+	if strings.Contains(urlLower, ".jpg") || strings.Contains(urlLower, ".jpeg") || 
+	   strings.HasSuffix(urlLower, ".jpg") || strings.HasSuffix(urlLower, ".jpeg") {
+		return "image/jpeg"
+	}
+	if strings.Contains(urlLower, ".png") || strings.HasSuffix(urlLower, ".png") {
+		return "image/png"
+	}
+	if strings.Contains(urlLower, ".gif") || strings.HasSuffix(urlLower, ".gif") {
+		return "image/gif"
+	}
+	if strings.Contains(urlLower, ".webp") || strings.HasSuffix(urlLower, ".webp") {
+		return "image/webp"
+	}
+	
+	// For hosting services known to serve audio (like attach.fahares.com), default to audio/mpeg
+	// This is a reasonable assumption for URLs without file extensions
+	return "audio/mpeg"
+}
+
 // FileFromMedia extracts file information from various tg.MessageMediaClass types.
 func FileFromMedia(media tg.MessageMediaClass) (*types.DocumentFile, error) {
 	switch media := media.(type) {

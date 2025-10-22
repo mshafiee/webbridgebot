@@ -625,11 +625,16 @@ func (b *TelegramBot) handleMediaMessages(ctx *ext.Context, u *ext.Update) error
 					if b.config.DebugMode {
 						b.logger.Printf("[DEBUG] Extracted URL from message entities: %s", fileURL)
 					}
+					// Detect MIME type from URL
+					mimeType := utils.DetectMimeTypeFromURL(fileURL)
+					if b.config.DebugMode {
+						b.logger.Printf("[DEBUG] Detected MIME type from URL: %s", mimeType)
+					}
 					// Create a simple DocumentFile for URL-based media
 					file = &types.DocumentFile{
-						FileName: "media_file",
-						MimeType: "application/octet-stream", // Will be detected from URL/headers
-						FileSize: 0,                          // Unknown size
+						FileName: "external_media",
+						MimeType: mimeType,
+						FileSize: 0, // Unknown size
 					}
 					// Send the URL directly to the user
 					return b.sendMediaToUser(ctx, u, fileURL, file, isForwarded)
@@ -948,7 +953,7 @@ func (b *TelegramBot) handleCallbackQuery(ctx *ext.Context, u *ext.Update) error
 
 			file, err := utils.FileFromMessage(ctx, b.tgClient, messageID)
 			var fileURL string
-			
+
 			if err != nil {
 				// Fallback: Try to extract URL from message entities (for WebPageEmpty)
 				message, msgErr := utils.GetMessage(ctx, b.tgClient, messageID)
@@ -960,10 +965,15 @@ func (b *TelegramBot) handleCallbackQuery(ctx *ext.Context, u *ext.Update) error
 								if b.config.DebugMode {
 									b.logger.Printf("[DEBUG] Callback: Extracted URL from entities for message %d: %s", messageID, extractedURL)
 								}
+								// Detect MIME type from URL
+								mimeType := utils.DetectMimeTypeFromURL(extractedURL)
+								if b.config.DebugMode {
+									b.logger.Printf("[DEBUG] Callback: Detected MIME type: %s", mimeType)
+								}
 								// Create a simple DocumentFile for URL-based media
 								file = &types.DocumentFile{
-									FileName: "media_file",
-									MimeType: "application/octet-stream",
+									FileName: "external_media",
+									MimeType: mimeType,
 									FileSize: 0,
 								}
 								fileURL = extractedURL
@@ -971,7 +981,7 @@ func (b *TelegramBot) handleCallbackQuery(ctx *ext.Context, u *ext.Update) error
 						}
 					}
 				}
-				
+
 				if fileURL == "" {
 					b.logger.Printf("Error fetching file for message ID %d for callback: %v", messageID, err)
 					_, _ = ctx.AnswerCallback(&tg.MessagesSetBotCallbackAnswerRequest{
