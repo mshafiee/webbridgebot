@@ -9,7 +9,7 @@ ADD . /app
 
 # Build the Go app
 RUN go mod download && \
-    go build -o /app/webBridgeBot .
+    go build -o /app/webBridgeBot ./cmd/webbridgebot
 
 # Use a smaller image to run the app
 FROM debian:bookworm-slim AS final
@@ -21,7 +21,7 @@ WORKDIR /app
 COPY --from=builder /app/webBridgeBot /app/webBridgeBot
 
 # Copy the run script
-COPY run.sh /app/run.sh
+COPY scripts/run.sh /app/run.sh
 
 # Copy the run templates
 COPY templates /app/templates

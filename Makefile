@@ -10,7 +10,7 @@ all: webBridgeBot docker
 
 # Build the Go application webBridgeBot
 webBridgeBot:
-	go build -o webBridgeBot .
+	go build -o webBridgeBot ./cmd/webbridgebot
 
 # Build Docker image
 docker:

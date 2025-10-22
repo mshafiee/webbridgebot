@@ -1,4 +1,4 @@
-package main
+package utils
 
 import (
 	"fmt"
@@ -6,8 +6,8 @@ import (
 	"reflect"
 )
 
-// findIPAddresses scans the network interfaces of the local machine and returns a slice of IP addresses (as strings) that are active and not loopback addresses.
-func findIPAddresses() ([]string, error) {
+// FindIPAddresses scans the network interfaces of the local machine and returns a slice of IP addresses (as strings) that are active and not loopback addresses.
+func FindIPAddresses() ([]string, error) {
 	var ips []string
 
 	// Get a list of all interfaces.

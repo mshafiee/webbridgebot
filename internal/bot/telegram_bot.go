@@ -1,26 +1,19 @@
 package bot
 
 import (
-	"context"
 	"database/sql"
-	"encoding/json"
-	"errors"
 	"fmt"
-	"html/template"
-	"io"
 	"log"
 	"math/rand"
-	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 	"webBridgeBot/internal/config"
 	"webBridgeBot/internal/data"
-	"webBridgeBot/internal/reader"
 	"webBridgeBot/internal/types"
 	"webBridgeBot/internal/utils"
+	"webBridgeBot/internal/web"
 
 	"github.com/celestix/gotgproto"
 	"github.com/celestix/gotgproto/dispatcher"
@@ -30,8 +23,6 @@ import (
 	"github.com/celestix/gotgproto/sessionMaker"
 	"github.com/celestix/gotgproto/storage"
 	"github.com/glebarez/sqlite"
-	"github.com/gorilla/mux"
-	"github.com/gorilla/websocket"
 	"github.com/gotd/td/tg"
 )
 
@@ -45,7 +36,6 @@ const (
 	callbackToggleFullscreen = "cb_ToggleFullscreen" // NEW
 	callbackListUsers        = "cb_listusers"        // For pagination of /listusers command
 	callbackUserAuthAction   = "cb_user_auth_action" // For user authorization/decline buttons
-	tmplPath                 = "templates/player.html"
 )
 
 // TelegramBot represents the main bot structure.
@@ -56,17 +46,8 @@ type TelegramBot struct {
 	logger         *log.Logger
 	userRepository *data.UserRepository
 	db             *sql.DB
+	webServer      *web.Server
 }
-
-var (
-	wsClients = make(map[int64]*websocket.Conn)
-
-	upgrader = websocket.Upgrader{
-		CheckOrigin: func(r *http.Request) bool {
-			return true
-		},
-	}
-)
 
 // NewTelegramBot creates a new instance of TelegramBot.
 func NewTelegramBot(config *config.Configuration, logger *log.Logger) (*TelegramBot, error) {
@@ -98,13 +79,19 @@ func NewTelegramBot(config *config.Configuration, logger *log.Logger) (*Telegram
 		return nil, err
 	}
 
+	tgCtx := tgClient.CreateContext()
+
+	// Create web server
+	webServer := web.NewServer(config, tgClient, tgCtx, logger, userRepository)
+
 	return &TelegramBot{
 		config:         config,
 		tgClient:       tgClient,
-		tgCtx:          tgClient.CreateContext(),
+		tgCtx:          tgCtx,
 		logger:         logger,
 		userRepository: userRepository,
 		db:             db,
+		webServer:      webServer,
 	}, nil
 }
 
@@ -114,7 +101,7 @@ func (b *TelegramBot) Run() {
 
 	b.registerHandlers()
 
-	go b.startWebServer()
+	go b.webServer.Start()
 
 	if err := b.tgClient.Idle(); err != nil {
 		b.logger.Fatalf("Failed to start Telegram client: %s", err)
@@ -749,32 +736,46 @@ func (b *TelegramBot) sendMediaToUser(ctx *ext.Context, u *ext.Update, fileURL s
 			u.EffectiveUser().ID, len(messageText))
 	}
 
+	// Build keyboard rows
+	var keyboardRows []tg.KeyboardButtonRow
+
+	// First row: Resend button and optionally Stream URL button
+	// Note: Telegram doesn't accept localhost URLs in inline buttons, so we skip it for localhost
+	firstRowButtons := []tg.KeyboardButtonClass{
+		&tg.KeyboardButtonCallback{
+			Text: "Resend to Player",
+			Data: []byte(fmt.Sprintf("%s,%d", callbackResendToPlayer, u.EffectiveMessage.Message.ID)),
+		},
+	}
+
+	// Only add URL button if not using localhost (Telegram doesn't allow localhost in URL buttons)
+	if !strings.Contains(strings.ToLower(fileURL), "localhost") &&
+		!strings.Contains(strings.ToLower(fileURL), "127.0.0.1") {
+		firstRowButtons = append(firstRowButtons, &tg.KeyboardButtonURL{Text: "Stream URL", URL: fileURL})
+	}
+
+	keyboardRows = append(keyboardRows, tg.KeyboardButtonRow{Buttons: firstRowButtons})
+
+	// Second row: Fullscreen toggle
+	keyboardRows = append(keyboardRows, tg.KeyboardButtonRow{
+		Buttons: []tg.KeyboardButtonClass{
+			&tg.KeyboardButtonCallback{Text: "Toggle Fullscreen", Data: []byte(callbackToggleFullscreen)},
+		},
+	})
+
+	// Third row: Playback controls
+	keyboardRows = append(keyboardRows, tg.KeyboardButtonRow{
+		Buttons: []tg.KeyboardButtonClass{
+			&tg.KeyboardButtonCallback{Text: "▶️/⏸️", Data: []byte(callbackPlay)},
+			&tg.KeyboardButtonCallback{Text: "🔄", Data: []byte(callbackRestart)},
+			&tg.KeyboardButtonCallback{Text: "⏪ 10s", Data: []byte(callbackBackward10)},
+			&tg.KeyboardButtonCallback{Text: "⏩ 10s", Data: []byte(callbackForward10)},
+		},
+	})
+
 	_, err := ctx.Reply(u, ext.ReplyTextString(messageText), &ext.ReplyOpts{
 		Markup: &tg.ReplyInlineMarkup{
-			Rows: []tg.KeyboardButtonRow{
-				{
-					Buttons: []tg.KeyboardButtonClass{
-						&tg.KeyboardButtonCallback{
-							Text: "Resend to Player",
-							Data: []byte(fmt.Sprintf("%s,%d", callbackResendToPlayer, u.EffectiveMessage.Message.ID)),
-						},
-						&tg.KeyboardButtonURL{Text: "Stream URL", URL: fileURL},
-					},
-				},
-				{
-					Buttons: []tg.KeyboardButtonClass{
-						&tg.KeyboardButtonCallback{Text: "Toggle Fullscreen", Data: []byte(callbackToggleFullscreen)},
-					},
-				},
-				{
-					Buttons: []tg.KeyboardButtonClass{
-						&tg.KeyboardButtonCallback{Text: "▶️/⏸️", Data: []byte(callbackPlay)},
-						&tg.KeyboardButtonCallback{Text: "🔄", Data: []byte(callbackRestart)},
-						&tg.KeyboardButtonCallback{Text: "⏪ 10s", Data: []byte(callbackBackward10)},
-						&tg.KeyboardButtonCallback{Text: "⏩ 10s", Data: []byte(callbackForward10)},
-					},
-				},
-			},
+			Rows: keyboardRows,
 		},
 	})
 	if err != nil {
@@ -795,7 +796,7 @@ func (b *TelegramBot) sendMediaToUser(ctx *ext.Context, u *ext.Update, fileURL s
 		b.logger.Printf("[DEBUG] WebSocket message constructed with %d fields. Publishing to chat ID %d", len(wsMsg), u.EffectiveChat().GetID())
 	}
 
-	b.publishToWebSocket(u.EffectiveChat().GetID(), wsMsg)
+	b.webServer.GetWSManager().PublishMessage(u.EffectiveChat().GetID(), wsMsg)
 
 	if b.config.DebugMode {
 		b.logger.Printf("[DEBUG] Media processing completed successfully for message ID %d", u.EffectiveMessage.Message.ID)
@@ -827,26 +828,6 @@ func (b *TelegramBot) constructWebSocketMessage(fileURL string, file *types.Docu
 	}
 }
 
-// publishControlCommandToWebSocket sends a control command to the specified chat's WebSocket client.
-func (b *TelegramBot) publishControlCommandToWebSocket(chatID int64, command string, value interface{}) {
-	if client, ok := wsClients[chatID]; ok {
-		msg := map[string]interface{}{
-			"command": command,
-			"value":   value,
-		}
-		messageJSON, err := json.Marshal(msg)
-		if err != nil {
-			log.Println("Error marshalling control message:", err)
-			return
-		}
-		if err := client.WriteMessage(websocket.TextMessage, messageJSON); err != nil {
-			log.Println("Error sending WebSocket control message:", err)
-			delete(wsClients, chatID) // Remove client if write fails
-			client.Close()            // Close the problematic connection
-		}
-	}
-}
-
 func (b *TelegramBot) generateFileURL(messageID int, file *types.DocumentFile) string {
 	hash := utils.GetShortHash(utils.PackFile(
 		file.FileName,
@@ -855,21 +836,6 @@ func (b *TelegramBot) generateFileURL(messageID int, file *types.DocumentFile) s
 		file.ID,
 	), b.config.HashLength)
 	return fmt.Sprintf("%s/%d/%s", b.config.BaseURL, messageID, hash)
-}
-
-func (b *TelegramBot) publishToWebSocket(chatID int64, message map[string]string) {
-	if client, ok := wsClients[chatID]; ok {
-		messageJSON, err := json.Marshal(message)
-		if err != nil {
-			log.Println("Error marshalling message:", err)
-			return
-		}
-		if err := client.WriteMessage(websocket.TextMessage, messageJSON); err != nil {
-			log.Println("Error sending WebSocket message:", err)
-			delete(wsClients, chatID) // Remove client if write fails
-			client.Close()            // Close the problematic connection
-		}
-	}
 }
 
 func (b *TelegramBot) handleCallbackQuery(ctx *ext.Context, u *ext.Update) error {
@@ -1046,7 +1012,7 @@ func (b *TelegramBot) handleCallbackQuery(ctx *ext.Context, u *ext.Update) error
 			}
 
 			wsMsg := b.constructWebSocketMessage(fileURL, file)
-			b.publishToWebSocket(u.EffectiveChat().GetID(), wsMsg)
+			b.webServer.GetWSManager().PublishMessage(u.EffectiveChat().GetID(), wsMsg)
 
 			if b.config.DebugMode {
 				b.logger.Printf("[DEBUG] Callback: WebSocket message published successfully")
@@ -1087,8 +1053,8 @@ func (b *TelegramBot) handleCallbackQuery(ctx *ext.Context, u *ext.Update) error
 
 	switch callbackType {
 	case callbackPlay:
-		if _, ok := wsClients[chatID]; ok { // Check if a websocket is connected for this chatID
-			b.publishControlCommandToWebSocket(chatID, "togglePlayPause", nil) // Client side will toggle
+		if _, ok := b.webServer.GetWSManager().GetClient(chatID); ok {
+			b.webServer.GetWSManager().PublishControlCommand(chatID, "togglePlayPause", nil)
 			_, _ = ctx.AnswerCallback(&tg.MessagesSetBotCallbackAnswerRequest{
 				QueryID: u.CallbackQuery.QueryID,
 				Message: "Playback toggled.",
@@ -1100,8 +1066,8 @@ func (b *TelegramBot) handleCallbackQuery(ctx *ext.Context, u *ext.Update) error
 			})
 		}
 	case callbackRestart:
-		if _, ok := wsClients[chatID]; ok {
-			b.publishControlCommandToWebSocket(chatID, "restart", nil)
+		if _, ok := b.webServer.GetWSManager().GetClient(chatID); ok {
+			b.webServer.GetWSManager().PublishControlCommand(chatID, "restart", nil)
 			_, _ = ctx.AnswerCallback(&tg.MessagesSetBotCallbackAnswerRequest{
 				QueryID: u.CallbackQuery.QueryID,
 				Message: "Restarting media.",
@@ -1113,8 +1079,8 @@ func (b *TelegramBot) handleCallbackQuery(ctx *ext.Context, u *ext.Update) error
 			})
 		}
 	case callbackForward10:
-		if _, ok := wsClients[chatID]; ok {
-			b.publishControlCommandToWebSocket(chatID, "seek", 10)
+		if _, ok := b.webServer.GetWSManager().GetClient(chatID); ok {
+			b.webServer.GetWSManager().PublishControlCommand(chatID, "seek", 10)
 			_, _ = ctx.AnswerCallback(&tg.MessagesSetBotCallbackAnswerRequest{
 				QueryID: u.CallbackQuery.QueryID,
 				Message: "Forwarded 10 seconds.",
@@ -1126,8 +1092,8 @@ func (b *TelegramBot) handleCallbackQuery(ctx *ext.Context, u *ext.Update) error
 			})
 		}
 	case callbackBackward10:
-		if _, ok := wsClients[chatID]; ok {
-			b.publishControlCommandToWebSocket(chatID, "seek", -10)
+		if _, ok := b.webServer.GetWSManager().GetClient(chatID); ok {
+			b.webServer.GetWSManager().PublishControlCommand(chatID, "seek", -10)
 			_, _ = ctx.AnswerCallback(&tg.MessagesSetBotCallbackAnswerRequest{
 				QueryID: u.CallbackQuery.QueryID,
 				Message: "Rewound 10 seconds.",
@@ -1138,9 +1104,9 @@ func (b *TelegramBot) handleCallbackQuery(ctx *ext.Context, u *ext.Update) error
 				Message: "Web player not connected.",
 			})
 		}
-	case callbackToggleFullscreen: // NEW: Handle the toggle fullscreen callback
-		if _, ok := wsClients[chatID]; ok {
-			b.publishControlCommandToWebSocket(chatID, "toggleFullscreen", nil) // Send command to WebSocket
+	case callbackToggleFullscreen:
+		if _, ok := b.webServer.GetWSManager().GetClient(chatID); ok {
+			b.webServer.GetWSManager().PublishControlCommand(chatID, "toggleFullscreen", nil)
 			_, _ = ctx.AnswerCallback(&tg.MessagesSetBotCallbackAnswerRequest{
 				QueryID: u.CallbackQuery.QueryID,
 				Message: "Fullscreen toggled.",
@@ -1219,464 +1185,6 @@ func (b *TelegramBot) wrapWithProxyIfNeeded(fileURL string) string {
 	}
 	// Return as-is for local/relative URLs
 	return fileURL
-}
-
-// handleProxy proxies external URLs to bypass CORS restrictions
-func (b *TelegramBot) handleProxy(w http.ResponseWriter, r *http.Request) {
-	// Get the external URL from query parameters
-	externalURL := r.URL.Query().Get("url")
-	if externalURL == "" {
-		http.Error(w, "Missing 'url' parameter", http.StatusBadRequest)
-		return
-	}
-
-	if b.config.DebugMode {
-		b.logger.Printf("[DEBUG] Proxy request for URL: %s", externalURL)
-	}
-
-	// Create HTTP client with timeout
-	client := &http.Client{
-		Timeout: 30 * time.Second,
-	}
-
-	// Fetch the external resource
-	resp, err := client.Get(externalURL)
-	if err != nil {
-		b.logger.Printf("Error fetching external URL %s: %v", externalURL, err)
-		http.Error(w, fmt.Sprintf("Failed to fetch resource: %v", err), http.StatusBadGateway)
-		return
-	}
-	defer resp.Body.Close()
-
-	// Check if the response is HTML (file hosting page) instead of media
-	contentType := resp.Header.Get("Content-Type")
-	if contentType != "" && strings.Contains(strings.ToLower(contentType), "text/html") {
-		b.logger.Printf("Warning: External URL %s returned HTML (file hosting page) instead of media. Content-Type: %s", externalURL, contentType)
-		if b.config.DebugMode {
-			b.logger.Printf("[DEBUG] This appears to be a file hosting page, not a direct media URL")
-		}
-	}
-
-	// Set CORS headers
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Range, Content-Type")
-
-	// Copy content-type and other relevant headers
-	if contentType != "" {
-		w.Header().Set("Content-Type", contentType)
-	}
-	if contentLength := resp.Header.Get("Content-Length"); contentLength != "" {
-		w.Header().Set("Content-Length", contentLength)
-	}
-	if acceptRanges := resp.Header.Get("Accept-Ranges"); acceptRanges != "" {
-		w.Header().Set("Accept-Ranges", acceptRanges)
-	}
-
-	// Handle range requests
-	if rangeHeader := r.Header.Get("Range"); rangeHeader != "" && resp.StatusCode == http.StatusOK {
-		// If client requests range but server doesn't support it, serve full content
-		w.WriteHeader(http.StatusOK)
-	} else {
-		w.WriteHeader(resp.StatusCode)
-	}
-
-	// Stream the response
-	_, err = io.Copy(w, resp.Body)
-	if err != nil && b.config.DebugMode {
-		b.logger.Printf("[DEBUG] Error streaming proxied content: %v", err)
-	}
-
-	if b.config.DebugMode {
-		b.logger.Printf("[DEBUG] Proxy completed for URL: %s", externalURL)
-	}
-}
-
-func (b *TelegramBot) startWebServer() {
-	router := mux.NewRouter()
-
-	router.HandleFunc("/ws/{chatID}", b.handleWebSocket)
-	router.HandleFunc("/avatar/{chatID}", b.handleAvatar)
-	router.HandleFunc("/proxy", b.handleProxy) // NEW: Proxy for external URLs
-	router.HandleFunc("/{messageID}/{hash}", b.handleStream)
-	router.HandleFunc("/{chatID}", b.handlePlayer)
-	router.HandleFunc("/{chatID}/", b.handlePlayer)
-
-	log.Printf("Web server started on port %s", b.config.Port)
-	if err := http.ListenAndServe(fmt.Sprintf(":%s", b.config.Port), router); err != nil {
-		log.Panic(err)
-	}
-}
-
-// handleWebSocket manages WebSocket connections and adds authorization.
-func (b *TelegramBot) handleWebSocket(w http.ResponseWriter, r *http.Request) {
-	chatID, err := b.parseChatID(mux.Vars(r))
-	if err != nil {
-		http.Error(w, "Invalid chat ID", http.StatusBadRequest)
-		if b.config.DebugMode {
-			b.logger.Printf("[DEBUG] WebSocket: Invalid chat ID in request from %s", r.RemoteAddr)
-		}
-		return
-	}
-
-	if b.config.DebugMode {
-		b.logger.Printf("[DEBUG] WebSocket connection attempt from %s for chat ID %d", r.RemoteAddr, chatID)
-	}
-
-	// Authorize user based on chatID (assuming chatID from URL is the user's ID in private chat)
-	userInfo, err := b.userRepository.GetUserInfo(chatID)
-	if err != nil || !userInfo.IsAuthorized {
-		http.Error(w, "Unauthorized WebSocket connection: User not found or not authorized.", http.StatusUnauthorized)
-		b.logger.Printf("Unauthorized WebSocket connection attempt for chatID %d: User not found or not authorized (%v)", chatID, err) // Added detailed log
-		if b.config.DebugMode {
-			b.logger.Printf("[DEBUG] WebSocket: Authorization failed for chat ID %d from %s", chatID, r.RemoteAddr)
-		}
-		return
-	}
-
-	ws, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		log.Println("WebSocket upgrade error:", err)
-		return
-	}
-	defer ws.Close()
-
-	wsClients[chatID] = ws
-	b.logger.Printf("WebSocket client connected for chat ID: %d", chatID)
-
-	for {
-		// Keep the connection alive or handle control messages.
-		messageType, p, err := ws.ReadMessage()
-		if err != nil {
-			log.Println("WebSocket read error:", err)
-			delete(wsClients, chatID)
-			break
-		}
-		// Echo the message back (optional, for keeping the connection alive).
-		if err := ws.WriteMessage(messageType, p); err != nil {
-			log.Println("WebSocket write error:", err)
-			break
-		}
-	}
-	b.logger.Printf("WebSocket client disconnected for chat ID: %d", chatID)
-}
-
-// handleStream handles the file streaming from Telegram.
-func (b *TelegramBot) handleStream(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	vars := mux.Vars(r)
-	messageIDStr := vars["messageID"]
-	authHash := vars["hash"]
-
-	b.logger.Printf("Received request to stream file with message ID: %s from client %s", messageIDStr, r.RemoteAddr)
-
-	if b.config.DebugMode {
-		b.logger.Printf("[DEBUG] Stream request details - MessageID: %s, Hash: %s, Range: %s, User-Agent: %s",
-			messageIDStr, authHash, r.Header.Get("Range"), r.Header.Get("User-Agent"))
-	}
-
-	// Parse and validate message ID.
-	messageID, err := strconv.Atoi(messageIDStr)
-	if err != nil {
-		b.logger.Printf("Invalid message ID '%s' received from client %s", messageIDStr, r.RemoteAddr)
-		http.Error(w, "Invalid message ID format", http.StatusBadRequest)
-		return
-	}
-
-	// Fetch the file information from Telegram (or cache)
-	if b.config.DebugMode {
-		b.logger.Printf("[DEBUG] Fetching file information for message ID %d", messageID)
-	}
-
-	file, err := utils.FileFromMessage(ctx, b.tgClient, messageID)
-	if err != nil {
-		b.logger.Printf("Error fetching file for message ID %d: %v", messageID, err)
-		if b.config.DebugMode {
-			b.logger.Printf("[DEBUG] File fetch failed for message ID %d: %v", messageID, err)
-		}
-		http.Error(w, "Unable to retrieve file for the specified message", http.StatusBadRequest)
-		return
-	}
-
-	if b.config.DebugMode {
-		b.logger.Printf("[DEBUG] File retrieved: %s (%d bytes)", file.FileName, file.FileSize)
-	}
-
-	// Hash verification
-	expectedHash := utils.PackFile(file.FileName, file.FileSize, file.MimeType, file.ID)
-	if !utils.CheckHash(authHash, expectedHash, b.config.HashLength) {
-		b.logger.Printf("Hash verification failed for message ID %d from client %s", messageID, r.RemoteAddr)
-		if b.config.DebugMode {
-			b.logger.Printf("[DEBUG] Hash mismatch - Expected: %s..., Got: %s", expectedHash[:10], authHash)
-		}
-		http.Error(w, "Invalid authentication hash", http.StatusBadRequest)
-		return
-	}
-
-	if b.config.DebugMode {
-		b.logger.Printf("[DEBUG] Hash verification passed for message ID %d", messageID)
-	}
-
-	contentLength := file.FileSize
-
-	// Default range values for full content.
-	var start, end int64 = 0, contentLength - 1
-
-	// Process range header if present.
-	rangeHeader := r.Header.Get("Range")
-	if rangeHeader != "" {
-		b.logger.Printf("Range header received for message ID %d: %s", messageID, rangeHeader)
-		if strings.HasPrefix(rangeHeader, "bytes=") {
-			ranges := strings.Split(rangeHeader[len("bytes="):], "-")
-			if len(ranges) == 2 {
-				if ranges[0] != "" {
-					start, err = strconv.ParseInt(ranges[0], 10, 64)
-					if err != nil {
-						b.logger.Printf("Invalid start range value for message ID %d: %v", messageID, err)
-						http.Error(w, "Invalid range start value", http.StatusBadRequest)
-						return
-					}
-				}
-				if ranges[1] != "" {
-					end, err = strconv.ParseInt(ranges[1], 10, 64)
-					if err != nil {
-						b.logger.Printf("Invalid end range value for message ID %d: %v", messageID, err)
-						http.Error(w, "Invalid range end value", http.StatusBadRequest)
-						return
-					}
-				}
-			}
-		}
-	}
-
-	// Validate the requested range.
-	if start > end || start < 0 || end >= contentLength {
-		b.logger.Printf("Requested range not satisfiable for message ID %d: start=%d, end=%d, contentLength=%d", messageID, start, end, contentLength)
-		http.Error(w, "Requested range not satisfiable", http.StatusRequestedRangeNotSatisfiable)
-		return
-	}
-
-	// Create a TelegramReader to stream the content.
-	lr, err := reader.NewTelegramReader(context.Background(), b.tgClient, file.Location, start, end, contentLength, b.config.BinaryCache, b.logger)
-	if err != nil {
-		b.logger.Printf("Error creating Telegram reader for message ID %d: %v", messageID, err)
-		http.Error(w, "Failed to initialize file stream", http.StatusInternalServerError)
-		return
-	}
-	defer lr.Close()
-
-	// Send appropriate headers and stream the content.
-	// Set Accept-Ranges header to indicate support for range requests
-	w.Header().Set("Accept-Ranges", "bytes")
-	w.Header().Set("Content-Type", file.MimeType) // Use actual mime type from file
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`inline; filename="%s"`, file.FileName))
-
-	// For large video files (>100MB) without a Range header, force a small initial chunk
-	// This encourages browsers to use range requests for better streaming performance
-	const largeFileThreshold = 100 * 1024 * 1024 // 100MB
-	if rangeHeader == "" && contentLength > largeFileThreshold && strings.HasPrefix(file.MimeType, "video/") {
-		// Send only the first 5MB to encourage range requests
-		end = 5*1024*1024 - 1
-		if end >= contentLength {
-			end = contentLength - 1
-		}
-		b.logger.Printf("Large video file detected (%d bytes). Serving initial chunk for message ID %d: bytes 0-%d/%d", contentLength, messageID, end, contentLength)
-		w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, contentLength))
-		w.Header().Set("Content-Length", strconv.FormatInt(end-start+1, 10))
-		w.WriteHeader(http.StatusPartialContent)
-	} else if rangeHeader != "" {
-		b.logger.Printf("Serving partial content for message ID %d: bytes %d-%d/%d", messageID, start, end, contentLength)
-		w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, contentLength))
-		w.Header().Set("Content-Length", strconv.FormatInt(end-start+1, 10))
-		w.WriteHeader(http.StatusPartialContent)
-	} else {
-		b.logger.Printf("Serving full content for message ID %d", messageID)
-		w.Header().Set("Content-Length", strconv.FormatInt(contentLength, 10))
-		w.WriteHeader(http.StatusOK)
-	}
-
-	// Stream the content to the client.
-	if _, err := io.Copy(w, lr); err != nil {
-		// These errors are expected if the client disconnects (e.g., closes tab, seeks video).
-		// We log them differently to reduce noise from non-critical errors.
-		if errors.Is(err, syscall.EPIPE) || errors.Is(err, syscall.ECONNRESET) {
-			b.logger.Printf("Client disconnected during stream for message ID %d. Error: %v", messageID, err)
-		} else {
-			b.logger.Printf("Error streaming content for message ID %d: %v", messageID, err)
-		}
-		// Headers might already be sent, so just log the error.
-	}
-}
-
-func (b *TelegramBot) parseChatID(vars map[string]string) (int64, error) {
-	chatIDStr, ok := vars["chatID"]
-	if !ok {
-		return 0, fmt.Errorf("Chat ID is required")
-	}
-
-	return strconv.ParseInt(chatIDStr, 10, 64)
-}
-
-// handleAvatar serves a user's Telegram profile photo (small square) if available.
-// It authorizes against known users and streams a cached small thumbnail.
-func (b *TelegramBot) handleAvatar(w http.ResponseWriter, r *http.Request) {
-	chatID, err := b.parseChatID(mux.Vars(r))
-	if err != nil {
-		http.Error(w, "Invalid chat ID", http.StatusBadRequest)
-		return
-	}
-
-	// Authorize user based on chatID
-	userInfo, err := b.userRepository.GetUserInfo(chatID)
-	if err != nil || !userInfo.IsAuthorized {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
-	ctx := r.Context()
-
-	// Resolve InputUser from peer storage to query photos
-	peer := b.tgCtx.PeerStorage.GetInputPeerById(chatID)
-
-	var inputUser tg.InputUserClass
-	switch p := peer.(type) {
-	case *tg.InputPeerUser:
-		inputUser = &tg.InputUser{UserID: p.UserID, AccessHash: p.AccessHash}
-	case *tg.InputPeerSelf:
-		inputUser = &tg.InputUserSelf{}
-	default:
-		http.Error(w, "User peer not found", http.StatusNotFound)
-		return
-	}
-
-	// Fetch latest user photos (limit 1)
-	photosRes, err := b.tgClient.API().PhotosGetUserPhotos(ctx, &tg.PhotosGetUserPhotosRequest{
-		UserID: inputUser,
-		Offset: 0,
-		MaxID:  0,
-		Limit:  1,
-	})
-	if err != nil {
-		b.logger.Printf("Avatar: failed PhotosGetUserPhotos for %d: %v", chatID, err)
-		http.NotFound(w, r)
-		return
-	}
-
-	var photo *tg.Photo
-	switch pr := photosRes.(type) {
-	case *tg.PhotosPhotos:
-		if len(pr.Photos) == 0 {
-			http.NotFound(w, r)
-			return
-		}
-		if p, ok := pr.Photos[0].(*tg.Photo); ok {
-			photo = p
-		}
-	case *tg.PhotosPhotosSlice:
-		if len(pr.Photos) == 0 {
-			http.NotFound(w, r)
-			return
-		}
-		if p, ok := pr.Photos[0].(*tg.Photo); ok {
-			photo = p
-		}
-	default:
-		http.NotFound(w, r)
-		return
-	}
-
-	if photo == nil || photo.AccessHash == 0 {
-		http.NotFound(w, r)
-		return
-	}
-
-	// Choose a reasonable thumbnail size type (prefer "x" then fallback)
-	thumbType := "x"
-	var sizeBytes int
-	for _, s := range photo.Sizes {
-		if ps, ok := s.(*tg.PhotoSize); ok {
-			if ps.Type == "x" {
-				thumbType = ps.Type
-				sizeBytes = ps.Size
-				break
-			}
-			// Track fallback if no "x" exists
-			if sizeBytes == 0 && ps.Size > 0 {
-				thumbType = ps.Type
-				sizeBytes = ps.Size
-			}
-		}
-	}
-	if sizeBytes <= 0 {
-		// Fallback size when size unknown; stream a small reasonable amount via reader with a large end
-		sizeBytes = 256 * 1024 // 256 KiB heuristic for small thumbnail
-	}
-
-	// Build location for the chosen thumbnail
-	location := &tg.InputPhotoFileLocation{
-		ID:            photo.ID,
-		AccessHash:    photo.AccessHash,
-		FileReference: photo.FileReference,
-		ThumbSize:     thumbType,
-	}
-
-	// Stream using existing Telegram reader (it also caches chunks)
-	start := int64(0)
-	end := int64(sizeBytes - 1)
-	if end < 0 {
-		end = 0
-	}
-
-	rc, err := reader.NewTelegramReader(ctx, b.tgClient, location, start, end, int64(sizeBytes), b.config.BinaryCache, b.logger)
-	if err != nil {
-		b.logger.Printf("Avatar: reader init failed for %d: %v", chatID, err)
-		http.NotFound(w, r)
-		return
-	}
-	defer rc.Close()
-
-	w.Header().Set("Content-Type", "image/jpeg")
-	w.Header().Set("Cache-Control", "public, max-age=86400")
-	// Best-effort content-length
-	if sizeBytes > 0 {
-		w.Header().Set("Content-Length", strconv.Itoa(sizeBytes))
-	}
-
-	if _, err := io.Copy(w, rc); err != nil {
-		// Client disconnects are common; respond gracefully
-		b.logger.Printf("Avatar: stream error for %d: %v", chatID, err)
-	}
-}
-
-// handlePlayer serves the HTML player page and adds authorization.
-func (b *TelegramBot) handlePlayer(w http.ResponseWriter, r *http.Request) {
-	log.Printf("Received request for player: %s", r.URL.Path)
-
-	chatID, err := b.parseChatID(mux.Vars(r))
-	if err != nil {
-		http.Error(w, "Invalid chat ID", http.StatusBadRequest)
-		return
-	}
-
-	// Authorize user based on chatID (assuming chatID from URL is the user's ID in private chat)
-	userInfo, err := b.userRepository.GetUserInfo(chatID)
-	if err != nil || !userInfo.IsAuthorized {
-		http.Error(w, "Unauthorized access to player. Please start the bot first.", http.StatusUnauthorized)
-		b.logger.Printf("Unauthorized player access attempt for chatID %d: User not found or not authorized (%v)", chatID, err) // Added detailed log
-		return
-	}
-
-	t, err := template.ParseFiles(tmplPath)
-	if err != nil {
-		b.logger.Printf("Error loading template: %v", err)
-		http.Error(w, "Failed to load template", http.StatusInternalServerError)
-		return
-	}
-
-	if err := t.Execute(w, map[string]interface{}{"User": userInfo}); err != nil {
-		b.logger.Printf("Error rendering template: %v", err)
-		http.Error(w, "Failed to render template", http.StatusInternalServerError)
-	}
 }
 
 // handleListUsers lists all users in a paginated format

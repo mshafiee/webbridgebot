@@ -447,6 +447,14 @@ func ForwardMessages(ctx *ext.Context, fromChatId int64, logChannelIdentifier st
 func ResolveChannelPeer(ctx *ext.Context, identifier string) (tg.InputPeerClass, error) {
 	// Try parsing as a numeric ID first.
 	if id, err := strconv.ParseInt(identifier, 10, 64); err == nil {
+		// If the ID is positive and looks like a channel ID (large number),
+		// automatically add the -100 prefix
+		if id > 0 && id > 1000000000 {
+			// This is likely a bare channel ID, convert it to the full format
+			id = -1000000000000 - id // Convert to negative with -100 prefix
+			identifier = strconv.FormatInt(id, 10)
+		}
+
 		// If it's a channel ID, resolve it via API to get the access hash and verify it.
 		peerInfo := ctx.PeerStorage.GetPeerById(id)
 		if peerInfo.Type == int(storage.TypeChannel) {
