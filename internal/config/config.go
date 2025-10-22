@@ -42,10 +42,15 @@ func InitializeViper(logger *log.Logger) {
 	if err := viper.ReadInConfig(); err != nil {
 		// Log a warning if .env not found. This is normal if config comes from env vars or flags.
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
-			logger.Printf("Warning: .env config file not found (this is expected if configuration is solely via environment variables or command-line flags).")
+			logger.Printf("Info: .env config file not found (this is expected if configuration is solely via environment variables or command-line flags).")
 		} else {
-			logger.Printf("Warning: Error reading config file from .env: %v", err)
+			// Handle other errors like file not existing or permission issues
+			logger.Printf("Info: Could not read .env file: %v", err)
+			logger.Printf("Hint: If you need to use a .env file, copy env.sample to .env and configure it.")
 		}
+		logger.Printf("Info: Configuration will be loaded from environment variables and command-line flags.")
+	} else {
+		logger.Printf("Info: Successfully loaded configuration from .env file")
 	}
 	// Note: `viper.BindPFlags` will be called in main.go after flags are defined.
 }
