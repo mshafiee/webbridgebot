@@ -3,7 +3,6 @@ package bot
 import (
 	"database/sql"
 	"fmt"
-	"log"
 	"math/rand"
 	"net/url"
 	"strconv"
@@ -11,6 +10,7 @@ import (
 	"time"
 	"webBridgeBot/internal/config"
 	"webBridgeBot/internal/data"
+	"webBridgeBot/internal/logger"
 	"webBridgeBot/internal/types"
 	"webBridgeBot/internal/utils"
 	"webBridgeBot/internal/web"
@@ -43,14 +43,14 @@ type TelegramBot struct {
 	config         *config.Configuration
 	tgClient       *gotgproto.Client
 	tgCtx          *ext.Context
-	logger         *log.Logger
+	logger         *logger.Logger
 	userRepository *data.UserRepository
 	db             *sql.DB
 	webServer      *web.Server
 }
 
 // NewTelegramBot creates a new instance of TelegramBot.
-func NewTelegramBot(config *config.Configuration, logger *log.Logger) (*TelegramBot, error) {
+func NewTelegramBot(config *config.Configuration, log *logger.Logger) (*TelegramBot, error) {
 	dsn := fmt.Sprintf("file:%s?mode=rwc", config.DatabasePath)
 	tgClient, err := gotgproto.NewClient(
 		config.ApiID,
@@ -82,13 +82,13 @@ func NewTelegramBot(config *config.Configuration, logger *log.Logger) (*Telegram
 	tgCtx := tgClient.CreateContext()
 
 	// Create web server
-	webServer := web.NewServer(config, tgClient, tgCtx, logger, userRepository)
+	webServer := web.NewServer(config, tgClient, tgCtx, log, userRepository)
 
 	return &TelegramBot{
 		config:         config,
 		tgClient:       tgClient,
 		tgCtx:          tgCtx,
-		logger:         logger,
+		logger:         log,
 		userRepository: userRepository,
 		db:             db,
 		webServer:      webServer,

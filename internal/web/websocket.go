@@ -2,7 +2,6 @@ package web
 
 import (
 	"encoding/json"
-	"log"
 	"net/http"
 	"strconv"
 
@@ -49,13 +48,13 @@ func (wm *WebSocketManager) PublishMessage(chatID int64, message map[string]stri
 	if client, ok := wm.clients[chatID]; ok {
 		messageJSON, err := json.Marshal(message)
 		if err != nil {
-			log.Println("Error marshalling message:", err)
+			// Silently fail on marshalling error
 			return
 		}
 		if err := client.WriteMessage(websocket.TextMessage, messageJSON); err != nil {
-			log.Println("Error sending WebSocket message:", err)
-			delete(wm.clients, chatID) // Remove client if write fails
-			client.Close()             // Close the problematic connection
+			// Remove client if write fails
+			delete(wm.clients, chatID)
+			client.Close()
 		}
 	}
 }
@@ -69,13 +68,13 @@ func (wm *WebSocketManager) PublishControlCommand(chatID int64, command string, 
 		}
 		messageJSON, err := json.Marshal(msg)
 		if err != nil {
-			log.Println("Error marshalling control message:", err)
+			// Silently fail on marshalling error
 			return
 		}
 		if err := client.WriteMessage(websocket.TextMessage, messageJSON); err != nil {
-			log.Println("Error sending WebSocket control message:", err)
-			delete(wm.clients, chatID) // Remove client if write fails
-			client.Close()             // Close the problematic connection
+			// Remove client if write fails
+			delete(wm.clients, chatID)
+			client.Close()
 		}
 	}
 }
@@ -108,29 +107,33 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Println("WebSocket upgrade error:", err)
+		s.logger.Errorf("WebSocket upgrade error: %v", err)
 		return
 	}
 	defer ws.Close()
 
 	s.wsManager.AddClient(chatID, ws)
-	s.logger.Printf("WebSocket client connected for chat ID: %d", chatID)
+	s.logger.Infof("WebSocket client connected for chat ID: %d", chatID)
 
 	for {
 		// Keep the connection alive or handle control messages.
 		messageType, p, err := ws.ReadMessage()
 		if err != nil {
-			log.Println("WebSocket read error:", err)
+			if s.config.DebugMode {
+				s.logger.Debugf("WebSocket read error: %v", err)
+			}
 			s.wsManager.RemoveClient(chatID)
 			break
 		}
 		// Echo the message back (optional, for keeping the connection alive).
 		if err := ws.WriteMessage(messageType, p); err != nil {
-			log.Println("WebSocket write error:", err)
+			if s.config.DebugMode {
+				s.logger.Debugf("WebSocket write error: %v", err)
+			}
 			break
 		}
 	}
-	s.logger.Printf("WebSocket client disconnected for chat ID: %d", chatID)
+	s.logger.Infof("WebSocket client disconnected for chat ID: %d", chatID)
 }
 
 // parseChatID parses chat ID from request variables

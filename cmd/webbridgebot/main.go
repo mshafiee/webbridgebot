@@ -3,12 +3,12 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
 	"webBridgeBot/internal/bot"
 	"webBridgeBot/internal/config" // Import config package
+	"webBridgeBot/internal/logger"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper" // Import viper for BindPFlags
@@ -18,10 +18,11 @@ import (
 var cfg config.Configuration
 
 func main() {
-	logger := log.New(os.Stdout, "webBridgeBot: ", log.Ldate|log.Ltime|log.Lshortfile)
+	// Create an initial logger for startup (will be reconfigured after config loads)
+	log := logger.NewDefault("webBridgeBot: ")
 
 	// 1. Initialize Viper: Read from environment variables and .env file.
-	config.InitializeViper(logger)
+	config.InitializeViper(log)
 
 	rootCmd := &cobra.Command{
 		Use:   "webBridgeBot",
@@ -31,17 +32,21 @@ func main() {
 		},
 		Run: func(cmd *cobra.Command, args []string) {
 			// 3. Load final configuration (which now also initializes the cache).
-			cfg = config.LoadConfig(logger)
+			cfg = config.LoadConfig(log)
+
+			// Update logger level based on loaded configuration
+			log.SetLevel(logger.ParseLogLevel(cfg.LogLevel))
+			log.Infof("Log level set to: %s", cfg.LogLevel)
 
 			// The BinaryCache now has a background worker. We must ensure it's closed properly.
 			defer func() {
-				logger.Println("Closing binary cache...")
+				log.Info("Closing binary cache...")
 				if err := cfg.BinaryCache.Close(); err != nil {
-					logger.Printf("Error closing binary cache: %v", err)
+					log.Errorf("Error closing binary cache: %v", err)
 				}
 			}()
 
-			b, err := bot.NewTelegramBot(&cfg, logger)
+			b, err := bot.NewTelegramBot(&cfg, log)
 			if err != nil {
 				log.Fatalf("Error initializing Telegram bot: %v", err)
 			}
@@ -58,10 +63,10 @@ func main() {
 				stop()
 			}()
 
-			logger.Println("Bot is running. Press Ctrl+C to exit.")
+			log.Info("Bot is running. Press Ctrl+C to exit.")
 			<-ctx.Done() // Block here until a signal is received
 
-			logger.Println("Shutdown signal received, initiating graceful shutdown...")
+			log.Info("Shutdown signal received, initiating graceful shutdown...")
 			// The deferred cache close will now be executed.
 		},
 	}
@@ -76,6 +81,7 @@ func main() {
 	rootCmd.Flags().StringVar(&cfg.CacheDirectory, "cache_directory", ".cache", "Directory to store cached files and database (default .cache)")
 	rootCmd.Flags().Int64Var(&cfg.MaxCacheSize, "max_cache_size", 10*1024*1024*1024, "Maximum cache size in bytes (default 10GB)")
 	rootCmd.Flags().BoolVar(&cfg.DebugMode, "debug_mode", false, "Enable debug logging (default false)")
+	rootCmd.Flags().StringVar(&cfg.LogLevel, "log_level", "INFO", "Log level: DEBUG, INFO, WARNING, ERROR (default INFO, or DEBUG if debug_mode=true)")
 	rootCmd.Flags().StringVar(&cfg.LogChannelID, "log_channel_id", "0", "Optional: Telegram Channel ID or @username to forward all media to (for logging)")
 
 	if err := rootCmd.Execute(); err != nil {

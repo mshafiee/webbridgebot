@@ -5,13 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"regexp"
 	"strconv"
 	"sync"
 	"syscall"
 	"time"
+	"webBridgeBot/internal/logger"
 
 	"github.com/celestix/gotgproto"
 	"github.com/gotd/td/tg"
@@ -34,7 +34,7 @@ const (
 var (
 	rateLimiter = time.NewTicker(time.Second / maxRequestsPerSecond)
 	mu          sync.Mutex
-	
+
 	// Circuit breaker for chunk downloads
 	chunkFailures      = make(map[string]*circuitBreakerState)
 	chunkFailuresMutex sync.RWMutex
@@ -42,16 +42,16 @@ var (
 
 // circuitBreakerState tracks failure state for a specific chunk
 type circuitBreakerState struct {
-	failures       int
-	lastFailure    time.Time
-	blockedUntil   time.Time
+	failures         int
+	lastFailure      time.Time
+	blockedUntil     time.Time
 	consecutiveFails int
 }
 
 const (
-	circuitBreakerThreshold = 3         // Number of consecutive failures before opening circuit
+	circuitBreakerThreshold = 3               // Number of consecutive failures before opening circuit
 	circuitBreakerTimeout   = 5 * time.Minute // How long to block retries after circuit opens
-	circuitBreakerReset     = 1 * time.Minute  // Reset failure count after this period of no failures
+	circuitBreakerReset     = 1 * time.Minute // Reset failure count after this period of no failures
 )
 
 // telegramClient defines the interface for the parts of the Telegram client that we use.
@@ -62,7 +62,7 @@ type telegramClient interface {
 
 type telegramReader struct {
 	ctx           context.Context
-	log           *log.Logger
+	log           *logger.Logger
 	client        telegramClient
 	location      tg.InputFileLocationClass
 	start         int64
@@ -75,17 +75,17 @@ type telegramReader struct {
 	contentLength int64
 	cache         *BinaryCache
 	debugMode     bool
-	
+
 	// Configurable retry settings
-	maxRetries     int
-	baseDelay      time.Duration
-	maxDelay       time.Duration
+	maxRetries int
+	baseDelay  time.Duration
+	maxDelay   time.Duration
 }
 
-func NewTelegramReader(ctx context.Context, client *gotgproto.Client, location tg.InputFileLocationClass, start int64, end int64, contentLength int64, cache *BinaryCache, logger *log.Logger, debugMode bool, maxRetries int, retryBaseDelay int, maxRetryDelay int) (io.ReadCloser, error) {
+func NewTelegramReader(ctx context.Context, client *gotgproto.Client, location tg.InputFileLocationClass, start int64, end int64, contentLength int64, cache *BinaryCache, log *logger.Logger, debugMode bool, maxRetries int, retryBaseDelay int, maxRetryDelay int) (io.ReadCloser, error) {
 	r := &telegramReader{
 		ctx:           ctx,
-		log:           logger,
+		log:           log,
 		location:      location,
 		client:        client,
 		start:         start,
@@ -255,7 +255,7 @@ func (r *telegramReader) downloadAndCacheChunk(req *tg.UploadGetFileRequest, cac
 			chunkData := result.Bytes
 			// Record success for circuit breaker
 			recordChunkSuccess(chunkKey)
-			
+
 			// Write the downloaded chunk to cache. The cache implementation handles
 			// data that is smaller than its internal fixed chunk size.
 			err = r.cache.writeChunk(locationID, cacheChunkID, chunkData)
@@ -390,7 +390,7 @@ func getChunkKey(locationID int64, offset int64) string {
 
 // checkCircuitBreaker checks if the circuit is open for a given chunk
 // Returns true if the chunk should be blocked, false otherwise
-func checkCircuitBreaker(chunkKey string, logger *log.Logger) bool {
+func checkCircuitBreaker(chunkKey string, log *logger.Logger) bool {
 	chunkFailuresMutex.RLock()
 	state, exists := chunkFailures[chunkKey]
 	chunkFailuresMutex.RUnlock()
@@ -403,7 +403,7 @@ func checkCircuitBreaker(chunkKey string, logger *log.Logger) bool {
 
 	// If circuit is open (blocked), check if timeout has expired
 	if now.Before(state.blockedUntil) {
-		logger.Printf("Circuit breaker OPEN for chunk %s: blocked until %v (attempt blocked)", 
+		log.Warningf("Circuit breaker OPEN for chunk %s: blocked until %v (attempt blocked)", 
 			chunkKey, state.blockedUntil.Format(time.RFC3339))
 		return true
 	}
@@ -413,7 +413,7 @@ func checkCircuitBreaker(chunkKey string, logger *log.Logger) bool {
 		chunkFailuresMutex.Lock()
 		delete(chunkFailures, chunkKey)
 		chunkFailuresMutex.Unlock()
-		logger.Printf("Circuit breaker RESET for chunk %s: failure history cleared", chunkKey)
+		log.Infof("Circuit breaker RESET for chunk %s: failure history cleared", chunkKey)
 		return false
 	}
 
@@ -421,7 +421,7 @@ func checkCircuitBreaker(chunkKey string, logger *log.Logger) bool {
 }
 
 // recordChunkFailure records a failure for a chunk and potentially opens the circuit
-func recordChunkFailure(chunkKey string, logger *log.Logger) {
+func recordChunkFailure(chunkKey string, log *logger.Logger) {
 	chunkFailuresMutex.Lock()
 	defer chunkFailuresMutex.Unlock()
 
@@ -438,7 +438,7 @@ func recordChunkFailure(chunkKey string, logger *log.Logger) {
 	// Open circuit if threshold exceeded
 	if state.consecutiveFails >= circuitBreakerThreshold {
 		state.blockedUntil = time.Now().Add(circuitBreakerTimeout)
-		logger.Printf("Circuit breaker OPENED for chunk %s: %d consecutive failures, blocking for %v",
+		log.Warningf("Circuit breaker OPENED for chunk %s: %d consecutive failures, blocking for %v",
 			chunkKey, state.consecutiveFails, circuitBreakerTimeout)
 	}
 }

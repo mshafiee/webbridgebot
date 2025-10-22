@@ -2,7 +2,7 @@ package config
 
 import (
 	"fmt"
-	"log"
+	"webBridgeBot/internal/logger"
 	"webBridgeBot/internal/reader"
 
 	"github.com/spf13/viper"
@@ -26,19 +26,20 @@ type Configuration struct {
 	MaxCacheSize   int64
 	DatabasePath   string
 	DebugMode      bool
+	LogLevel       string // Log level: DEBUG, INFO, WARNING, ERROR
 	BinaryCache    *reader.BinaryCache
 	LogChannelID   string
-	
+
 	// Connection and retry settings
-	RequestTimeout    int // Timeout for Telegram API requests in seconds
-	MaxRetries        int // Maximum number of retry attempts for failed requests
-	RetryBaseDelay    int // Base delay for exponential backoff in seconds
-	MaxRetryDelay     int // Maximum retry delay in seconds
+	RequestTimeout int // Timeout for Telegram API requests in seconds
+	MaxRetries     int // Maximum number of retry attempts for failed requests
+	RetryBaseDelay int // Base delay for exponential backoff in seconds
+	MaxRetryDelay  int // Maximum retry delay in seconds
 }
 
 // InitializeViper sets up Viper to read from environment variables and the .env file.
 // This function should be called early in main.
-func InitializeViper(logger *log.Logger) {
+func InitializeViper(log *logger.Logger) {
 	viper.AutomaticEnv() // Read environment variables (e.g., from docker-compose)
 
 	// Explicitly set the config file name and type for .env
@@ -48,22 +49,22 @@ func InitializeViper(logger *log.Logger) {
 	if err := viper.ReadInConfig(); err != nil {
 		// Log a warning if .env not found. This is normal if config comes from env vars or flags.
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
-			logger.Printf("Info: .env config file not found (this is expected if configuration is solely via environment variables or command-line flags).")
+			log.Info(".env config file not found (this is expected if configuration is solely via environment variables or command-line flags).")
 		} else {
 			// Handle other errors like file not existing or permission issues
-			logger.Printf("Info: Could not read .env file: %v", err)
-			logger.Printf("Hint: If you need to use a .env file, copy env.sample to .env and configure it.")
+			log.Infof("Could not read .env file: %v", err)
+			log.Info("Hint: If you need to use a .env file, copy env.sample to .env and configure it.")
 		}
-		logger.Printf("Info: Configuration will be loaded from environment variables and command-line flags.")
+		log.Info("Configuration will be loaded from environment variables and command-line flags.")
 	} else {
-		logger.Printf("Info: Successfully loaded configuration from .env file")
+		log.Info("Successfully loaded configuration from .env file")
 	}
 	// Note: `viper.BindPFlags` will be called in main.go after flags are defined.
 }
 
 // LoadConfig loads configuration from Viper's resolved settings.
 // Viper should have already read from files, environment variables, and command-line flags.
-func LoadConfig(logger *log.Logger) Configuration {
+func LoadConfig(log *logger.Logger) Configuration {
 	var cfg Configuration
 
 	// Direct assignments from Viper's resolved values
@@ -78,8 +79,9 @@ func LoadConfig(logger *log.Logger) Configuration {
 	cfg.CacheDirectory = viper.GetString("cache_directory")
 	cfg.MaxCacheSize = viper.GetInt64("max_cache_size")
 	cfg.DebugMode = viper.GetBool("debug_mode")
+	cfg.LogLevel = viper.GetString("log_level")
 	cfg.LogChannelID = viper.GetString("log_channel_id")
-	
+
 	// Connection and retry settings
 	cfg.RequestTimeout = viper.GetInt("request_timeout")
 	cfg.MaxRetries = viper.GetInt("max_retries")
@@ -90,30 +92,30 @@ func LoadConfig(logger *log.Logger) Configuration {
 	setDefaultValues(&cfg)
 
 	// Validate after all sources (flags, env, defaults) have been applied
-	validateMandatoryFields(cfg, logger)
+	validateMandatoryFields(cfg, log)
 
 	// Initialize BinaryCache after all config values are final
-	initializeBinaryCache(&cfg, logger)
+	initializeBinaryCache(&cfg, log)
 
 	if cfg.DebugMode {
-		logger.Printf("Loaded configuration: %+v", cfg)
+		log.Debugf("Loaded configuration: %+v", cfg)
 	}
 
 	return cfg
 }
 
-func validateMandatoryFields(cfg Configuration, logger *log.Logger) {
+func validateMandatoryFields(cfg Configuration, log *logger.Logger) {
 	if cfg.ApiID == 0 {
-		logger.Fatal("API_ID is required and not set")
+		log.Fatal("API_ID is required and not set")
 	}
 	if cfg.ApiHash == "" {
-		logger.Fatal("API_HASH is required and not set")
+		log.Fatal("API_HASH is required and not set")
 	}
 	if cfg.BotToken == "" {
-		logger.Fatal("BOT_TOKEN is required and not set")
+		log.Fatal("BOT_TOKEN is required and not set")
 	}
 	if cfg.BaseURL == "" {
-		logger.Fatal("BASE_URL is required and not set")
+		log.Fatal("BASE_URL is required and not set")
 	}
 }
 
@@ -135,6 +137,13 @@ func setDefaultValues(cfg *Configuration) {
 	if cfg.Port == "" {
 		cfg.Port = "8080"
 	}
+	if cfg.LogLevel == "" {
+		if cfg.DebugMode {
+			cfg.LogLevel = "DEBUG"
+		} else {
+			cfg.LogLevel = "INFO"
+		}
+	}
 	
 	// Connection and retry defaults
 	if cfg.RequestTimeout == 0 {
@@ -151,7 +160,7 @@ func setDefaultValues(cfg *Configuration) {
 	}
 }
 
-func initializeBinaryCache(cfg *Configuration, logger *log.Logger) {
+func initializeBinaryCache(cfg *Configuration, log *logger.Logger) {
 	var err error
 	cfg.BinaryCache, err = reader.NewBinaryCache(
 		cfg.CacheDirectory,
@@ -159,6 +168,6 @@ func initializeBinaryCache(cfg *Configuration, logger *log.Logger) {
 		DefaultChunkSize,
 	)
 	if err != nil {
-		logger.Fatalf("Error initializing BinaryCache: %v", err)
+		log.Fatalf("Error initializing BinaryCache: %v", err)
 	}
 }

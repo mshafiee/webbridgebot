@@ -534,7 +534,7 @@ func ExtractFloodWait(err error) (int, bool) {
 	if err == nil {
 		return 0, false
 	}
-	
+
 	errText := err.Error()
 	// Pattern: FLOOD_WAIT (3) or FLOOD_WAIT_3 or similar variations
 	if strings.Contains(errText, "FLOOD_WAIT") {

@@ -2,10 +2,10 @@ package web
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 	"webBridgeBot/internal/config"
 	"webBridgeBot/internal/data"
+	"webBridgeBot/internal/logger"
 
 	"github.com/celestix/gotgproto"
 	"github.com/celestix/gotgproto/ext"
@@ -21,7 +21,7 @@ type Server struct {
 	config         *config.Configuration
 	tgClient       *gotgproto.Client
 	tgCtx          *ext.Context
-	logger         *log.Logger
+	logger         *logger.Logger
 	userRepository *data.UserRepository
 	wsManager      *WebSocketManager
 }
@@ -31,14 +31,14 @@ func NewServer(
 	config *config.Configuration,
 	tgClient *gotgproto.Client,
 	tgCtx *ext.Context,
-	logger *log.Logger,
+	log *logger.Logger,
 	userRepository *data.UserRepository,
 ) *Server {
 	return &Server{
 		config:         config,
 		tgClient:       tgClient,
 		tgCtx:          tgCtx,
-		logger:         logger,
+		logger:         log,
 		userRepository: userRepository,
 		wsManager:      NewWebSocketManager(),
 	}
@@ -56,9 +56,9 @@ func (s *Server) Start() {
 	router.HandleFunc("/{chatID}", s.handlePlayer)
 	router.HandleFunc("/{chatID}/", s.handlePlayer)
 
-	s.logger.Printf("Web server started on port %s", s.config.Port)
+	s.logger.Infof("Web server started on port %s", s.config.Port)
 	if err := http.ListenAndServe(fmt.Sprintf(":%s", s.config.Port), router); err != nil {
-		log.Panic(err)
+		s.logger.Fatalf("Failed to start web server: %v", err)
 	}
 }
 
