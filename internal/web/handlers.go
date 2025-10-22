@@ -158,8 +158,10 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 	// Stream the content to the client
 	if _, err := io.Copy(w, lr); err != nil {
 		// These errors are expected if the client disconnects
-		if errors.Is(err, syscall.EPIPE) || errors.Is(err, syscall.ECONNRESET) {
-			s.logger.Printf("Client disconnected during stream for message ID %d. Error: %v", messageID, err)
+		if isClientDisconnectError(err) {
+			if s.config.DebugMode {
+				s.logger.Printf("[DEBUG] Client disconnected during stream for message ID %d from %s", messageID, r.RemoteAddr)
+			}
 		} else {
 			s.logger.Printf("Error streaming content for message ID %d: %v", messageID, err)
 		}
@@ -319,7 +321,10 @@ func (s *Server) handleAvatar(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if _, err := io.Copy(w, rc); err != nil {
-		s.logger.Printf("Avatar: stream error for %d: %v", chatID, err)
+		// Only log unexpected errors, client disconnects are normal
+		if !isClientDisconnectError(err) {
+			s.logger.Printf("Avatar: stream error for %d: %v", chatID, err)
+		}
 	}
 }
 
@@ -390,4 +395,36 @@ func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
 	if s.config.DebugMode {
 		s.logger.Printf("[DEBUG] Proxy completed for URL: %s", externalURL)
 	}
+}
+
+// isClientDisconnectError checks if an error is caused by client disconnection
+// These are expected errors when clients close connections (e.g., seeking in videos, closing browser tabs)
+func isClientDisconnectError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	// Check for specific syscall errors
+	if errors.Is(err, syscall.EPIPE) || errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.ECONNABORTED) {
+		return true
+	}
+
+	// Check error message strings for wrapped errors that errors.Is() might miss
+	errMsg := err.Error()
+	disconnectPatterns := []string{
+		"broken pipe",
+		"connection reset by peer",
+		"connection reset",
+		"client disconnected",
+		"write: connection reset",
+		"readfrom tcp",
+	}
+
+	for _, pattern := range disconnectPatterns {
+		if strings.Contains(strings.ToLower(errMsg), pattern) {
+			return true
+		}
+	}
+
+	return false
 }
