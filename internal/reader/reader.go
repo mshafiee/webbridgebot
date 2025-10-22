@@ -29,14 +29,11 @@ const (
 	preferredChunkSize = int64(256 * 1024)
 
 	maxRequestsPerSecond = 30
-	maxRetries           = 5
-	maxDelay             = 60 * time.Second
 )
 
 var (
 	rateLimiter = time.NewTicker(time.Second / maxRequestsPerSecond)
 	mu          sync.Mutex
-	baseDelay   = time.Second
 	
 	// Circuit breaker for chunk downloads
 	chunkFailures      = make(map[string]*circuitBreakerState)
@@ -78,9 +75,14 @@ type telegramReader struct {
 	contentLength int64
 	cache         *BinaryCache
 	debugMode     bool
+	
+	// Configurable retry settings
+	maxRetries     int
+	baseDelay      time.Duration
+	maxDelay       time.Duration
 }
 
-func NewTelegramReader(ctx context.Context, client *gotgproto.Client, location tg.InputFileLocationClass, start int64, end int64, contentLength int64, cache *BinaryCache, logger *log.Logger, debugMode bool) (io.ReadCloser, error) {
+func NewTelegramReader(ctx context.Context, client *gotgproto.Client, location tg.InputFileLocationClass, start int64, end int64, contentLength int64, cache *BinaryCache, logger *log.Logger, debugMode bool, maxRetries int, retryBaseDelay int, maxRetryDelay int) (io.ReadCloser, error) {
 	r := &telegramReader{
 		ctx:           ctx,
 		log:           logger,
@@ -92,6 +94,9 @@ func NewTelegramReader(ctx context.Context, client *gotgproto.Client, location t
 		contentLength: contentLength,
 		cache:         cache,
 		debugMode:     debugMode,
+		maxRetries:    maxRetries,
+		baseDelay:     time.Duration(retryBaseDelay) * time.Second,
+		maxDelay:      time.Duration(maxRetryDelay) * time.Second,
 	}
 	if r.debugMode {
 		r.log.Println("[DEBUG] Initializing TelegramReader.")
@@ -196,7 +201,7 @@ func (r *telegramReader) chunk(offset int64, limit int64) ([]byte, error) {
 }
 
 func (r *telegramReader) downloadAndCacheChunk(req *tg.UploadGetFileRequest, cacheChunkID int64) ([]byte, error) {
-	delay := baseDelay
+	delay := r.baseDelay
 
 	var locationID int64
 	switch l := req.Location.(type) {
@@ -214,7 +219,7 @@ func (r *telegramReader) downloadAndCacheChunk(req *tg.UploadGetFileRequest, cac
 		return nil, fmt.Errorf("circuit breaker open for chunk at offset %d (location %d): too many recent failures", req.Offset, locationID)
 	}
 
-	for retryCount := 0; retryCount < maxRetries; retryCount++ {
+	for retryCount := 0; retryCount < r.maxRetries; retryCount++ {
 		mu.Lock()
 		<-rateLimiter.C
 		mu.Unlock()
@@ -235,7 +240,7 @@ func (r *telegramReader) downloadAndCacheChunk(req *tg.UploadGetFileRequest, cac
 			if isTransientError(err) {
 				r.log.Printf("Transient error: %v, retrying in %v", err, delay)
 				time.Sleep(delay)
-				delay = minDuration(delay*2, maxDelay)
+				delay = minDuration(delay*2, r.maxDelay)
 				continue
 			}
 
@@ -265,7 +270,7 @@ func (r *telegramReader) downloadAndCacheChunk(req *tg.UploadGetFileRequest, cac
 
 	// Record failure after exhausting all retries
 	recordChunkFailure(chunkKey, r.log)
-	return nil, fmt.Errorf("failed to download chunk %d for location %d after %d retries", cacheChunkID, locationID, maxRetries)
+	return nil, fmt.Errorf("failed to download chunk %d for location %d after %d retries", cacheChunkID, locationID, r.maxRetries)
 }
 
 func (r *telegramReader) partStream() func() ([]byte, error) {

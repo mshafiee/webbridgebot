@@ -28,6 +28,12 @@ type Configuration struct {
 	DebugMode      bool
 	BinaryCache    *reader.BinaryCache
 	LogChannelID   string
+	
+	// Connection and retry settings
+	RequestTimeout    int // Timeout for Telegram API requests in seconds
+	MaxRetries        int // Maximum number of retry attempts for failed requests
+	RetryBaseDelay    int // Base delay for exponential backoff in seconds
+	MaxRetryDelay     int // Maximum retry delay in seconds
 }
 
 // InitializeViper sets up Viper to read from environment variables and the .env file.
@@ -73,6 +79,12 @@ func LoadConfig(logger *log.Logger) Configuration {
 	cfg.MaxCacheSize = viper.GetInt64("max_cache_size")
 	cfg.DebugMode = viper.GetBool("debug_mode")
 	cfg.LogChannelID = viper.GetString("log_channel_id")
+	
+	// Connection and retry settings
+	cfg.RequestTimeout = viper.GetInt("request_timeout")
+	cfg.MaxRetries = viper.GetInt("max_retries")
+	cfg.RetryBaseDelay = viper.GetInt("retry_base_delay")
+	cfg.MaxRetryDelay = viper.GetInt("max_retry_delay")
 
 	// Apply default values if not set by any source (flags, env, file)
 	setDefaultValues(&cfg)
@@ -122,6 +134,20 @@ func setDefaultValues(cfg *Configuration) {
 	// but keeping a fallback here is harmless if cfg.Port is somehow still empty
 	if cfg.Port == "" {
 		cfg.Port = "8080"
+	}
+	
+	// Connection and retry defaults
+	if cfg.RequestTimeout == 0 {
+		cfg.RequestTimeout = 300 // 5 minutes default timeout
+	}
+	if cfg.MaxRetries == 0 {
+		cfg.MaxRetries = 5 // 5 retry attempts by default
+	}
+	if cfg.RetryBaseDelay == 0 {
+		cfg.RetryBaseDelay = 1 // 1 second base delay
+	}
+	if cfg.MaxRetryDelay == 0 {
+		cfg.MaxRetryDelay = 60 // 60 seconds max delay
 	}
 }
 
