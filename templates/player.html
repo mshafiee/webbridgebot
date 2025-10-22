@@ -299,10 +299,14 @@
         }
 
         #videoPlayer[style*="display: block"],
-        #audioPlayer[style*="display: block"],
         #imageViewer[style*="display: block"] {
             display: block;
             animation: scaleIn 0.4s var(--transition-slow);
+        }
+        
+        /* Audio player is always hidden - we use AudioMotion visualizer */
+        #audioPlayer {
+            display: none !important;
         }
 
         #videoPlayer:hover,
@@ -509,9 +513,10 @@
             left: 0;
             right: 0;
             display: flex;
+            flex-direction: column;
             align-items: center;
             justify-content: center;
-            gap: var(--spacing-lg);
+            gap: var(--spacing-sm);
             padding: var(--spacing-md) var(--spacing-xl);
             background: var(--glass-light);
             backdrop-filter: blur(20px);
@@ -528,6 +533,125 @@
             justify-content: center;
             gap: var(--spacing-sm);
             flex-wrap: wrap;
+        }
+
+        .audio-controls-section {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-md);
+            width: 100%;
+            max-width: 800px;
+            padding: var(--spacing-sm) 0;
+        }
+
+        .bottom-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: var(--spacing-lg);
+            width: 100%;
+        }
+
+        .audio-controls-section .icon-button {
+            min-width: 48px;
+            padding: var(--spacing-sm);
+            border-radius: 50%;
+        }
+
+        .time-display {
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: var(--text-primary);
+            min-width: 45px;
+            text-align: center;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .seek-bar {
+            flex: 1;
+            height: 20px;
+            -webkit-appearance: none;
+            appearance: none;
+            background: transparent;
+            border-radius: 3px;
+            outline: none;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            --seek-progress: 0%;
+        }
+
+        .seek-bar::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: var(--primary);
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+            transition: all 0.2s ease;
+            margin-top: -5px; /* Center thumb with 6px track: (16px - 6px) / 2 = 5px */
+        }
+
+        .seek-bar::-webkit-slider-thumb:hover {
+            width: 18px;
+            height: 18px;
+            background: var(--primary-light);
+            margin-top: -6px; /* Center 18px thumb with 6px track: (18px - 6px) / 2 = 6px */
+        }
+
+        .seek-bar::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: var(--primary);
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+            transition: all 0.2s ease;
+            margin-top: -5px; /* Center thumb with 6px track: (16px - 6px) / 2 = 5px */
+        }
+
+        .seek-bar::-moz-range-thumb:hover {
+            width: 18px;
+            height: 18px;
+            background: var(--primary-light);
+            margin-top: -6px; /* Center 18px thumb with 6px track: (18px - 6px) / 2 = 6px */
+        }
+
+        /* Seek bar track styling for visibility */
+        .seek-bar::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 6px;
+            background: linear-gradient(to right, 
+                var(--primary) 0%, 
+                var(--primary) var(--seek-progress), 
+                var(--surface-light) var(--seek-progress), 
+                var(--surface-light) 100%);
+            border-radius: 3px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            cursor: pointer;
+        }
+
+        .seek-bar::-moz-range-track {
+            width: 100%;
+            height: 6px;
+            background: linear-gradient(to right, 
+                var(--primary) 0%, 
+                var(--primary) var(--seek-progress), 
+                var(--surface-light) var(--seek-progress), 
+                var(--surface-light) 100%);
+            border-radius: 3px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            cursor: pointer;
+        }
+        
+        .seek-bar:hover::-webkit-slider-runnable-track {
+            height: 8px;
+        }
+        
+        .seek-bar:hover::-moz-range-track {
+            height: 8px;
         }
 
         .recent-users-section {
@@ -737,6 +861,17 @@
                 justify-content: center;
             }
 
+            .audio-controls-section {
+                width: 100%;
+                max-width: none;
+                padding: 0 var(--spacing-sm);
+            }
+
+            .bottom-row {
+                flex-wrap: wrap;
+                gap: var(--spacing-md);
+            }
+
             .recent-users-section {
                 width: 100%;
                 justify-content: center;
@@ -911,7 +1046,7 @@
         <div class="media-container">
             <div class="loading-spinner"></div>
             <video id="videoPlayer" controls></video>
-            <audio id="audioPlayer" controls></audio>
+            <audio id="audioPlayer" style="display: none;"></audio>
             <img id="imageViewer" alt="Displayed media" />
         </div>
     </main>
@@ -919,35 +1054,53 @@
     <div id="audioMotionContainer"></div>
 
     <div id="recentUsersBar" class="recent-users-bar" aria-label="Control bar">
-        <div class="control-buttons-section">
-            <button id="reloadButton" class="button">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+        <!-- Audio Controls Section (Top Row) -->
+        <div id="audioControlsSection" class="audio-controls-section" style="display: none;">
+            <button id="playPauseButton" class="button icon-button">
+                <svg id="playIcon" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M8 5v14l11-7z"/>
                 </svg>
-                Reload
-            </button>
-            <button id="backwardButton" class="button">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M11 19l-7-7 7-7M18 19l-7-7 7-7"/>
-                </svg>
-                -10s
-            </button>
-            <button id="forwardButton" class="button">
-                +10s
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M13 5l7 7-7 7M6 5l7 7-7 7"/>
+                <svg id="pauseIcon" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" style="display: none;">
+                    <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>
                 </svg>
             </button>
-            <button id="fullscreenButton" class="button">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
-                </svg>
-                Fullscreen
-            </button>
+            <span id="currentTime" class="time-display">0:00</span>
+            <input type="range" id="seekBar" class="seek-bar" min="0" max="100" value="0" step="0.1">
+            <span id="remainingTime" class="time-display">-0:00</span>
         </div>
         
-        <div class="recent-users-section">
-            <div class="recent-users-track" id="recentUsersTrack"></div>
+        <!-- Bottom Row Container -->
+        <div class="bottom-row">
+            <div class="control-buttons-section">
+                <button id="reloadButton" class="button">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+                    </svg>
+                    Reload
+                </button>
+                <button id="backwardButton" class="button">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M11 19l-7-7 7-7M18 19l-7-7 7-7"/>
+                    </svg>
+                    -10s
+                </button>
+                <button id="forwardButton" class="button">
+                    +10s
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M13 5l7 7-7 7M6 5l7 7-7 7"/>
+                    </svg>
+                </button>
+                <button id="fullscreenButton" class="button">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+                    </svg>
+                    Fullscreen
+                </button>
+            </div>
+            
+            <div class="recent-users-section">
+                <div class="recent-users-track" id="recentUsersTrack"></div>
+            </div>
         </div>
     </div>
 
@@ -971,13 +1124,22 @@
                 metadataTitle: document.getElementById('metadataTitle'),
                 metadataPerformer: document.getElementById('metadataPerformer'),
                 metadataFlags: document.getElementById('metadataFlags'),
-                mediaContainer: document.querySelector('.media-container')
+                mediaContainer: document.querySelector('.media-container'),
+                // Audio controls
+                audioControlsSection: document.getElementById('audioControlsSection'),
+                playPauseButton: document.getElementById('playPauseButton'),
+                playIcon: document.getElementById('playIcon'),
+                pauseIcon: document.getElementById('pauseIcon'),
+                seekBar: document.getElementById('seekBar'),
+                currentTime: document.getElementById('currentTime'),
+                remainingTime: document.getElementById('remainingTime')
             };
 
             let ws;
             let latestMediaData = null;
             let audioMotionInstance = null;
             let statusTimeout = null;
+            let isSeeking = false;
 
             const setupWebSocket = () => {
                 const wsAddress = `ws://${window.location.host}/ws/{{.User.ChatID}}`;
@@ -993,6 +1155,7 @@
 
             const handleWebSocketMessage = (event) => {
                 try {
+                    console.log('Raw WebSocket data:', event.data);
                     const data = JSON.parse(event.data);
                     console.log('Message from server: ', data);
 
@@ -1000,10 +1163,19 @@
                         handleControlCommand(data.command, data.value);
                     } else {
                         latestMediaData = data;
-                        displayMedia(data);
+                        try {
+                            displayMedia(data);
+                        } catch (displayError) {
+                            console.error('Error in displayMedia:', displayError);
+                            console.error('Error stack:', displayError.stack);
+                            throw displayError; // Re-throw to be caught by outer catch
+                        }
                     }
                 } catch (e) {
-                    console.error('Failed to parse WebSocket message:', e);
+                    console.error('Failed to process WebSocket message:', e);
+                    console.error('Error message:', e.message);
+                    console.error('Error stack:', e.stack);
+                    console.error('Raw event data:', event.data);
                     updateStatus('Error processing message.', 'error');
                 }
             };
@@ -1067,20 +1239,29 @@
             };
 
             const hideAllMediaPlayers = () => {
+                // Stop video playback
+                if (!dom.videoPlayer.paused) {
+                    dom.videoPlayer.pause();
+                }
                 dom.videoPlayer.style.display = 'none';
-                dom.audioPlayer.style.display = 'none';
-                dom.imageViewer.style.display = 'none';
                 dom.videoPlayer.src = '';
-                dom.audioPlayer.src = '';
+                
+                // Stop audio playback and hide visualizer
+                if (!dom.audioPlayer.paused) {
+                    dom.audioPlayer.pause();
+                }
+                dom.audioMotionContainer.style.display = 'none';
+                hideAudioControls();
+                
+                // Hide image viewer
+                dom.imageViewer.style.display = 'none';
                 dom.imageViewer.src = '';
+                
+                // Hide metadata
                 dom.mediaMetadata.style.display = 'none';
 
-                if (audioMotionInstance) {
-                    audioMotionInstance.disconnect();
-                    audioMotionInstance = null;
-                    dom.audioMotionContainer.innerHTML = '';
-                    window.removeEventListener('resize', resizeAudioMotion);
-                }
+                // Note: We keep audioMotionInstance alive to reuse it for subsequent audio files
+                // Web Audio API doesn't allow reconnecting the same audio element to a new MediaElementSource
             };
 
             const displayMetadata = (data) => {
@@ -1143,9 +1324,20 @@
                     updateButtonVisibility('video');
                 } else if (data.mimeType.startsWith('audio')) {
                     updateStatus('Loading audio...', 'info', 0); // Will be replaced when loaded
-                    dom.audioPlayer.style.display = 'block';
-                    loadAndPlayMedia(dom.audioPlayer, uniqueUrl);
-                    initAudioMotion(dom.audioPlayer);
+                    // Keep audio element hidden - we use AudioMotion visualizer and custom controls
+                    // dom.audioPlayer.style.display remains 'none'
+                    loadAndPlayMedia(dom.audioPlayer, uniqueUrl, () => {
+                        // Initialize AudioMotion only if not already initialized
+                        // Web Audio API doesn't allow reconnecting the same audio element
+                        if (!audioMotionInstance) {
+                            initAudioMotion(dom.audioPlayer);
+                        } else {
+                            console.log('AudioMotion already initialized, reusing existing instance');
+                            // Show the AudioMotion container for reused instance
+                            dom.audioMotionContainer.style.display = 'block';
+                        }
+                    });
+                    setupAudioControls();
                     updateButtonVisibility('audio');
                 } else if (data.mimeType.startsWith('image')) {
                     updateStatus('Loading image...', 'info', 0); // Will be replaced when loaded
@@ -1160,30 +1352,90 @@
                 }
             };
 
-            const loadAndPlayMedia = (player, url) => {
+            const loadAndPlayMedia = async (player, url, onLoadedCallback) => {
+                // First, properly reset the player
+                player.pause();
+                player.removeAttribute('src');
+                player.load(); // This clears the media element
+                
+                // First, check if the URL returns actual media content
+                try {
+                    const response = await fetch(url, { method: 'HEAD' });
+                    const contentType = response.headers.get('content-type');
+                    
+                    // Check if content-type is HTML (file hosting page) instead of media
+                    if (contentType && contentType.includes('text/html')) {
+                        dom.mediaContainer.classList.remove('loading');
+                        updateStatus('⚠️ File hosting page detected. Please send the file directly (not forwarded) or provide a direct download link.', 'error', 0);
+                        console.error('File hosting page detected. Content-Type:', contentType);
+                        return;
+                    }
+                    
+                    // Check if we got an error response
+                    if (!response.ok) {
+                        dom.mediaContainer.classList.remove('loading');
+                        updateStatus(`Failed to load media (HTTP ${response.status}). Please try again.`, 'error');
+                        console.error('HTTP error:', response.status, response.statusText);
+                        return;
+                    }
+                } catch (error) {
+                    console.warn('Could not pre-check content type:', error);
+                    // Continue anyway - maybe the media will load
+                }
+
+                // Add error handler before loading
+                const handleError = (e) => {
+                    dom.mediaContainer.classList.remove('loading');
+                    const errorMsg = player.error ? `Error code: ${player.error.code}` : 'Unknown error';
+                    console.error('Media element error:', errorMsg, e);
+                    updateStatus('Failed to load media. The file may be unavailable or in an unsupported format.', 'error');
+                };
+                player.addEventListener('error', handleError, { once: true });
+                
+                // Set source and load
                 player.src = url;
                 player.load();
 
-                player.addEventListener('loadeddata', () => {
+                // Wait for loadedmetadata or canplay (much faster than loadeddata for large files)
+                const onCanPlay = () => {
                     dom.mediaContainer.classList.remove('loading');
-                }, { once: true });
-
-                const attemptPlay = () => {
-                    player.play().then(() => {
-                        updateStatus('Media playing.', 'success', 2000);
-                        player.focus();
-                    }).catch(error => {
-                        dom.mediaContainer.classList.remove('loading');
-                        if (error.name === 'NotAllowedError') {
-                            updateStatus('Click to play media (Autoplay blocked).', 'info', 0); // Don't auto-hide
-                            document.body.addEventListener('click', attemptPlay, { once: true });
-                        } else {
-                            console.error('Error playing media: ', error);
-                            updateStatus('Error playing media. Please try reloading.', 'error');
+                    
+                    // Call the callback after media is ready but before playing
+                    if (onLoadedCallback && typeof onLoadedCallback === 'function') {
+                        try {
+                            onLoadedCallback();
+                        } catch (e) {
+                            console.error('Error in onLoadedCallback:', e);
                         }
-                    });
+                    }
+                    
+                    const attemptPlay = () => {
+                        player.play().then(() => {
+                            updateStatus('Media playing.', 'success', 2000);
+                            player.focus();
+                        }).catch(error => {
+                            if (error.name === 'NotAllowedError') {
+                                updateStatus('Click to play media (Autoplay blocked).', 'info', 0);
+                                document.body.addEventListener('click', attemptPlay, { once: true });
+                            } else {
+                                console.error('Error playing media: ', error);
+                                updateStatus('Error playing media. Please try reloading.', 'error');
+                            }
+                        });
+                    };
+                    attemptPlay();
                 };
-                attemptPlay();
+                
+                // Try canplay first (fires when some data is ready), fallback to loadedmetadata
+                player.addEventListener('canplay', onCanPlay, { once: true });
+                
+                // Also handle loadedmetadata as fallback for live streams
+                player.addEventListener('loadedmetadata', () => {
+                    // If metadata is loaded, try to play even if not enough data yet
+                    if (player.readyState < 3) { // HAVE_FUTURE_DATA
+                        console.log('Metadata loaded, waiting for enough data to play...');
+                    }
+                }, { once: true });
             };
 
             const loadImage = (imageElement, url) => {
@@ -1262,9 +1514,104 @@
                 }
             };
 
+            // Audio Control Functions
+            const formatTime = (seconds) => {
+                if (isNaN(seconds) || seconds === Infinity) return '0:00';
+                const mins = Math.floor(seconds / 60);
+                const secs = Math.floor(seconds % 60);
+                return `${mins}:${secs.toString().padStart(2, '0')}`;
+            };
+
+            const updateAudioControls = () => {
+                if (!dom.audioPlayer || isNaN(dom.audioPlayer.duration)) return;
+
+                const currentTime = dom.audioPlayer.currentTime;
+                const duration = dom.audioPlayer.duration;
+                const remaining = duration - currentTime;
+
+                // Update time displays
+                dom.currentTime.textContent = formatTime(currentTime);
+                dom.remainingTime.textContent = '-' + formatTime(remaining);
+
+                // Update seek bar
+                if (!isSeeking) {
+                    const progress = (currentTime / duration) * 100;
+                    dom.seekBar.value = progress;
+                    // Update seek bar progress via CSS custom property
+                    dom.seekBar.style.setProperty('--seek-progress', `${progress}%`);
+                }
+
+                // Update play/pause button
+                if (dom.audioPlayer.paused) {
+                    dom.playIcon.style.display = 'block';
+                    dom.pauseIcon.style.display = 'none';
+                } else {
+                    dom.playIcon.style.display = 'none';
+                    dom.pauseIcon.style.display = 'block';
+                }
+            };
+
+            const setupAudioControls = () => {
+                // Show audio controls
+                dom.audioControlsSection.style.display = 'flex';
+
+                // Play/Pause button
+                dom.playPauseButton.addEventListener('click', () => {
+                    if (dom.audioPlayer.paused) {
+                        dom.audioPlayer.play();
+                    } else {
+                        dom.audioPlayer.pause();
+                    }
+                });
+
+                // Seek bar input
+                dom.seekBar.addEventListener('input', (e) => {
+                    isSeeking = true;
+                    const progress = e.target.value;
+                    const newTime = (progress / 100) * dom.audioPlayer.duration;
+                    dom.currentTime.textContent = formatTime(newTime);
+                    dom.remainingTime.textContent = '-' + formatTime(dom.audioPlayer.duration - newTime);
+                    // Update seek bar progress via CSS custom property during seeking
+                    dom.seekBar.style.setProperty('--seek-progress', `${progress}%`);
+                });
+
+                dom.seekBar.addEventListener('change', (e) => {
+                    const newTime = (e.target.value / 100) * dom.audioPlayer.duration;
+                    dom.audioPlayer.currentTime = newTime;
+                    isSeeking = false;
+                });
+
+                // Time update listener
+                dom.audioPlayer.addEventListener('timeupdate', updateAudioControls);
+
+                // Play/Pause state listeners
+                dom.audioPlayer.addEventListener('play', updateAudioControls);
+                dom.audioPlayer.addEventListener('pause', updateAudioControls);
+
+                // Duration loaded listener
+                dom.audioPlayer.addEventListener('loadedmetadata', () => {
+                    dom.seekBar.max = 100;
+                    dom.seekBar.style.setProperty('--seek-progress', '0%');
+                    updateAudioControls();
+                });
+
+                // Initialize controls
+                updateAudioControls();
+            };
+
+            const hideAudioControls = () => {
+                dom.audioControlsSection.style.display = 'none';
+            };
+
             const initAudioMotion = (audioElement) => {
                 if (audioMotionInstance) {
-                    audioMotionInstance.disconnect();
+                    // Properly destroy the existing AudioMotion instance
+                    try {
+                        audioMotionInstance.disconnectInput();
+                        audioMotionInstance.disconnectOutput();
+                    } catch (e) {
+                        // Methods might not exist, ignore
+                    }
                     audioMotionInstance = null;
                     dom.audioMotionContainer.innerHTML = '';
                 }
@@ -1286,28 +1633,20 @@
                         radialInvert: true,
                         channelLayout: "dual-vertical",
                         smoothing: 0.7,
-                        gradient: "rgb(0, 200, 255), rgb(0, 100, 255), rgb(150, 0, 255)"
+                        gradient: "prism"
                     });
 
-                    window.addEventListener('resize', resizeAudioMotion);
+                    // Show the AudioMotion container when audio is playing
+                    dom.audioMotionContainer.style.display = 'block';
 
-                    const attemptPlayVisualizer = () => {
-                        audioElement.play().then(() => {
-                            updateStatus('Audio playing with visualization.', 'success', 2000);
-                        }).catch(error => {
-                            if (error.name === 'NotAllowedError') {
-                                updateStatus('Please click to enable audio visualization.', 'info', 0); // Don't auto-hide
-                                document.body.addEventListener('click', attemptPlayVisualizer, { once: true });
-                            } else {
-                                console.error('Error starting AudioMotion: ', error);
-                                updateStatus('Error initializing audio visualization.', 'error');
-                            }
-                        });
-                    };
-                    attemptPlayVisualizer();
+                    window.addEventListener('resize', resizeAudioMotion);
+                    
+                    console.log('AudioMotion visualizer initialized successfully');
 
                 } catch (error) {
                     console.error('AudioMotionAnalyzer initialization error: ', error);
+                    console.error('Error message:', error.message);
+                    console.error('Error stack:', error.stack);
                     updateStatus('Error initializing audio visualization.', 'error');
                 }
             };
@@ -1319,8 +1658,9 @@
             };
 
             const handleControlCommand = (command, value) => {
+                // Check which player is active (audio is determined by controls section visibility)
                 const currentPlayer = dom.videoPlayer.style.display === 'block' ? dom.videoPlayer :
-                                      dom.audioPlayer.style.display === 'block' ? dom.audioPlayer :
+                                      dom.audioControlsSection.style.display === 'flex' ? dom.audioPlayer :
                                       dom.imageViewer.style.display === 'block' ? dom.imageViewer :
                                       null;
 

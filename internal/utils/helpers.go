@@ -54,7 +54,7 @@ func ExtractURLFromEntities(msg *tg.Message) string {
 	if msg == nil || len(msg.Entities) == 0 {
 		return ""
 	}
-	
+
 	// Look for MessageEntityTextURL or MessageEntityURL
 	for _, entity := range msg.Entities {
 		switch e := entity.(type) {
@@ -72,7 +72,7 @@ func ExtractURLFromEntities(msg *tg.Message) string {
 			}
 		}
 	}
-	
+
 	return ""
 }
 
@@ -80,7 +80,7 @@ func ExtractURLFromEntities(msg *tg.Message) string {
 func DetectMimeTypeFromURL(url string) string {
 	// Extract file extension from URL
 	urlLower := strings.ToLower(url)
-	
+
 	// Common audio formats
 	if strings.Contains(urlLower, ".mp3") || strings.HasSuffix(urlLower, ".mp3") {
 		return "audio/mpeg"
@@ -100,7 +100,7 @@ func DetectMimeTypeFromURL(url string) string {
 	if strings.Contains(urlLower, ".aac") || strings.HasSuffix(urlLower, ".aac") {
 		return "audio/aac"
 	}
-	
+
 	// Common video formats
 	if strings.Contains(urlLower, ".mp4") || strings.HasSuffix(urlLower, ".mp4") {
 		return "video/mp4"
@@ -117,10 +117,10 @@ func DetectMimeTypeFromURL(url string) string {
 	if strings.Contains(urlLower, ".mov") || strings.HasSuffix(urlLower, ".mov") {
 		return "video/quicktime"
 	}
-	
+
 	// Common image formats
-	if strings.Contains(urlLower, ".jpg") || strings.Contains(urlLower, ".jpeg") || 
-	   strings.HasSuffix(urlLower, ".jpg") || strings.HasSuffix(urlLower, ".jpeg") {
+	if strings.Contains(urlLower, ".jpg") || strings.Contains(urlLower, ".jpeg") ||
+		strings.HasSuffix(urlLower, ".jpg") || strings.HasSuffix(urlLower, ".jpeg") {
 		return "image/jpeg"
 	}
 	if strings.Contains(urlLower, ".png") || strings.HasSuffix(urlLower, ".png") {
@@ -132,7 +132,7 @@ func DetectMimeTypeFromURL(url string) string {
 	if strings.Contains(urlLower, ".webp") || strings.HasSuffix(urlLower, ".webp") {
 		return "image/webp"
 	}
-	
+
 	// For hosting services known to serve audio (like attach.fahares.com), default to audio/mpeg
 	// This is a reasonable assumption for URLs without file extensions
 	return "audio/mpeg"

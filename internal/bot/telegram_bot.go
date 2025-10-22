@@ -11,9 +11,11 @@ import (
 	"log"
 	"math/rand"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 	"webBridgeBot/internal/config"
 	"webBridgeBot/internal/data"
 	"webBridgeBot/internal/reader"
@@ -625,19 +627,41 @@ func (b *TelegramBot) handleMediaMessages(ctx *ext.Context, u *ext.Update) error
 					if b.config.DebugMode {
 						b.logger.Printf("[DEBUG] Extracted URL from message entities: %s", fileURL)
 					}
+
+					// Quick check if URL might be a file hosting page
+					isFileHosting := strings.Contains(strings.ToLower(fileURL), "attach.fahares.com") ||
+						strings.Contains(strings.ToLower(fileURL), "filehosting") ||
+						strings.Contains(strings.ToLower(fileURL), "upload")
+
 					// Detect MIME type from URL
 					mimeType := utils.DetectMimeTypeFromURL(fileURL)
 					if b.config.DebugMode {
 						b.logger.Printf("[DEBUG] Detected MIME type from URL: %s", mimeType)
+						if isFileHosting {
+							b.logger.Printf("[DEBUG] Warning: URL appears to be a file hosting page")
+						}
 					}
+
 					// Create a simple DocumentFile for URL-based media
 					file = &types.DocumentFile{
 						FileName: "external_media",
 						MimeType: mimeType,
 						FileSize: 0, // Unknown size
 					}
-					// Send the URL directly to the user
-					return b.sendMediaToUser(ctx, u, fileURL, file, isForwarded)
+
+					// Send the URL to the user (with potential warning)
+					err := b.sendMediaToUser(ctx, u, fileURL, file, isForwarded)
+
+					// If it's a file hosting URL, send an additional warning
+					if err == nil && isFileHosting {
+						warningMsg := "⚠️ Note: This appears to be a file hosting page. If the media doesn't play, please:\n" +
+							"• Send the file directly (not forwarded)\n" +
+							"• Or provide a direct download link"
+						time.Sleep(500 * time.Millisecond) // Small delay before sending warning
+						_ = b.sendReply(ctx, u, warningMsg)
+					}
+
+					return err
 				}
 			}
 		}
@@ -781,8 +805,15 @@ func (b *TelegramBot) sendMediaToUser(ctx *ext.Context, u *ext.Update, fileURL s
 }
 
 func (b *TelegramBot) constructWebSocketMessage(fileURL string, file *types.DocumentFile) map[string]string {
+	// Wrap external URLs with proxy to avoid CORS issues
+	proxiedURL := b.wrapWithProxyIfNeeded(fileURL)
+
+	if b.config.DebugMode && proxiedURL != fileURL {
+		b.logger.Printf("[DEBUG] Wrapped external URL with proxy: %s -> %s", fileURL, proxiedURL)
+	}
+
 	return map[string]string{
-		"url":         fileURL,
+		"url":         proxiedURL,
 		"fileName":    file.FileName,
 		"fileId":      strconv.FormatInt(file.ID, 10), // Use FormatInt for int64
 		"mimeType":    file.MimeType,
@@ -940,7 +971,13 @@ func (b *TelegramBot) handleCallbackQuery(ctx *ext.Context, u *ext.Update) error
 
 	// Then, check for `cb_ResendToPlayer` which has a specific format with message ID.
 	if strings.HasPrefix(string(u.CallbackQuery.Data), callbackResendToPlayer) {
+		if b.config.DebugMode {
+			b.logger.Printf("[DEBUG] Callback: Processing ResendToPlayer, data: %s", string(u.CallbackQuery.Data))
+		}
 		dataParts := strings.Split(string(u.CallbackQuery.Data), ",")
+		if b.config.DebugMode {
+			b.logger.Printf("[DEBUG] Callback: Split into %d parts: %v", len(dataParts), dataParts)
+		}
 		if len(dataParts) > 1 {
 			messageID, err := strconv.Atoi(dataParts[1])
 			if err != nil {
@@ -977,9 +1014,16 @@ func (b *TelegramBot) handleCallbackQuery(ctx *ext.Context, u *ext.Update) error
 									FileSize: 0,
 								}
 								fileURL = extractedURL
+								if b.config.DebugMode {
+									b.logger.Printf("[DEBUG] Callback: Set fileURL to extracted URL, length: %d", len(fileURL))
+								}
 							}
 						}
 					}
+				}
+
+				if b.config.DebugMode {
+					b.logger.Printf("[DEBUG] Callback: After fallback, fileURL length: %d, file is nil: %v", len(fileURL), file == nil)
 				}
 
 				if fileURL == "" {
@@ -992,15 +1036,46 @@ func (b *TelegramBot) handleCallbackQuery(ctx *ext.Context, u *ext.Update) error
 				}
 			} else {
 				fileURL = b.generateFileURL(messageID, file)
+				if b.config.DebugMode {
+					b.logger.Printf("[DEBUG] Callback: Generated Telegram file URL")
+				}
+			}
+
+			if b.config.DebugMode {
+				b.logger.Printf("[DEBUG] Callback: Constructing WebSocket message with URL: %s, MIME: %s", fileURL, file.MimeType)
 			}
 
 			wsMsg := b.constructWebSocketMessage(fileURL, file)
 			b.publishToWebSocket(u.EffectiveChat().GetID(), wsMsg)
 
-			_, _ = ctx.AnswerCallback(&tg.MessagesSetBotCallbackAnswerRequest{
+			if b.config.DebugMode {
+				b.logger.Printf("[DEBUG] Callback: WebSocket message published successfully")
+			}
+
+			successMsg := fmt.Sprintf("The %s file has been sent to the web player.", file.FileName)
+			if b.config.DebugMode {
+				b.logger.Printf("[DEBUG] Callback: Sending success answer to Telegram: %s", successMsg)
+			}
+
+			_, err = ctx.AnswerCallback(&tg.MessagesSetBotCallbackAnswerRequest{
 				Alert:   false,
 				QueryID: u.CallbackQuery.QueryID,
-				Message: fmt.Sprintf("The %s file has been sent to the web player.", file.FileName),
+				Message: successMsg,
+			})
+			if err != nil && b.config.DebugMode {
+				b.logger.Printf("[DEBUG] Callback: Error sending answer to Telegram: %v", err)
+			} else if b.config.DebugMode {
+				b.logger.Printf("[DEBUG] Callback: Success answer sent to Telegram successfully")
+			}
+			return nil
+		} else {
+			// Handle case where callback data format is incorrect
+			if b.config.DebugMode {
+				b.logger.Printf("[DEBUG] Callback: Invalid data format for ResendToPlayer, parts: %d", len(dataParts))
+			}
+			_, _ = ctx.AnswerCallback(&tg.MessagesSetBotCallbackAnswerRequest{
+				QueryID: u.CallbackQuery.QueryID,
+				Message: "Invalid callback data format.",
 			})
 			return nil
 		}
@@ -1130,11 +1205,99 @@ func (b *TelegramBot) handleCallbackQuery(ctx *ext.Context, u *ext.Update) error
 	return nil
 }
 
+// wrapWithProxyIfNeeded wraps external URLs with the proxy endpoint
+func (b *TelegramBot) wrapWithProxyIfNeeded(fileURL string) string {
+	// Check if it's an external URL (http:// or https://)
+	if strings.HasPrefix(fileURL, "http://") || strings.HasPrefix(fileURL, "https://") {
+		// Check if it's NOT already our own server
+		if !strings.Contains(fileURL, fmt.Sprintf(":%s", b.config.Port)) &&
+			!strings.Contains(fileURL, "localhost") &&
+			!strings.HasPrefix(fileURL, b.config.BaseURL) {
+			// Wrap with proxy
+			return fmt.Sprintf("/proxy?url=%s", url.QueryEscape(fileURL))
+		}
+	}
+	// Return as-is for local/relative URLs
+	return fileURL
+}
+
+// handleProxy proxies external URLs to bypass CORS restrictions
+func (b *TelegramBot) handleProxy(w http.ResponseWriter, r *http.Request) {
+	// Get the external URL from query parameters
+	externalURL := r.URL.Query().Get("url")
+	if externalURL == "" {
+		http.Error(w, "Missing 'url' parameter", http.StatusBadRequest)
+		return
+	}
+
+	if b.config.DebugMode {
+		b.logger.Printf("[DEBUG] Proxy request for URL: %s", externalURL)
+	}
+
+	// Create HTTP client with timeout
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+
+	// Fetch the external resource
+	resp, err := client.Get(externalURL)
+	if err != nil {
+		b.logger.Printf("Error fetching external URL %s: %v", externalURL, err)
+		http.Error(w, fmt.Sprintf("Failed to fetch resource: %v", err), http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+
+	// Check if the response is HTML (file hosting page) instead of media
+	contentType := resp.Header.Get("Content-Type")
+	if contentType != "" && strings.Contains(strings.ToLower(contentType), "text/html") {
+		b.logger.Printf("Warning: External URL %s returned HTML (file hosting page) instead of media. Content-Type: %s", externalURL, contentType)
+		if b.config.DebugMode {
+			b.logger.Printf("[DEBUG] This appears to be a file hosting page, not a direct media URL")
+		}
+	}
+
+	// Set CORS headers
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Range, Content-Type")
+
+	// Copy content-type and other relevant headers
+	if contentType != "" {
+		w.Header().Set("Content-Type", contentType)
+	}
+	if contentLength := resp.Header.Get("Content-Length"); contentLength != "" {
+		w.Header().Set("Content-Length", contentLength)
+	}
+	if acceptRanges := resp.Header.Get("Accept-Ranges"); acceptRanges != "" {
+		w.Header().Set("Accept-Ranges", acceptRanges)
+	}
+
+	// Handle range requests
+	if rangeHeader := r.Header.Get("Range"); rangeHeader != "" && resp.StatusCode == http.StatusOK {
+		// If client requests range but server doesn't support it, serve full content
+		w.WriteHeader(http.StatusOK)
+	} else {
+		w.WriteHeader(resp.StatusCode)
+	}
+
+	// Stream the response
+	_, err = io.Copy(w, resp.Body)
+	if err != nil && b.config.DebugMode {
+		b.logger.Printf("[DEBUG] Error streaming proxied content: %v", err)
+	}
+
+	if b.config.DebugMode {
+		b.logger.Printf("[DEBUG] Proxy completed for URL: %s", externalURL)
+	}
+}
+
 func (b *TelegramBot) startWebServer() {
 	router := mux.NewRouter()
 
 	router.HandleFunc("/ws/{chatID}", b.handleWebSocket)
 	router.HandleFunc("/avatar/{chatID}", b.handleAvatar)
+	router.HandleFunc("/proxy", b.handleProxy) // NEW: Proxy for external URLs
 	router.HandleFunc("/{messageID}/{hash}", b.handleStream)
 	router.HandleFunc("/{chatID}", b.handlePlayer)
 	router.HandleFunc("/{chatID}/", b.handlePlayer)
@@ -1303,17 +1466,33 @@ func (b *TelegramBot) handleStream(w http.ResponseWriter, r *http.Request) {
 	defer lr.Close()
 
 	// Send appropriate headers and stream the content.
-	if rangeHeader != "" {
+	// Set Accept-Ranges header to indicate support for range requests
+	w.Header().Set("Accept-Ranges", "bytes")
+	w.Header().Set("Content-Type", file.MimeType) // Use actual mime type from file
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`inline; filename="%s"`, file.FileName))
+
+	// For large video files (>100MB) without a Range header, force a small initial chunk
+	// This encourages browsers to use range requests for better streaming performance
+	const largeFileThreshold = 100 * 1024 * 1024 // 100MB
+	if rangeHeader == "" && contentLength > largeFileThreshold && strings.HasPrefix(file.MimeType, "video/") {
+		// Send only the first 5MB to encourage range requests
+		end = 5*1024*1024 - 1
+		if end >= contentLength {
+			end = contentLength - 1
+		}
+		b.logger.Printf("Large video file detected (%d bytes). Serving initial chunk for message ID %d: bytes 0-%d/%d", contentLength, messageID, end, contentLength)
+		w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, contentLength))
+		w.Header().Set("Content-Length", strconv.FormatInt(end-start+1, 10))
+		w.WriteHeader(http.StatusPartialContent)
+	} else if rangeHeader != "" {
 		b.logger.Printf("Serving partial content for message ID %d: bytes %d-%d/%d", messageID, start, end, contentLength)
 		w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, contentLength))
 		w.Header().Set("Content-Length", strconv.FormatInt(end-start+1, 10))
-		w.Header().Set("Content-Type", file.MimeType) // Use actual mime type from file
 		w.WriteHeader(http.StatusPartialContent)
 	} else {
 		b.logger.Printf("Serving full content for message ID %d", messageID)
 		w.Header().Set("Content-Length", strconv.FormatInt(contentLength, 10))
-		w.Header().Set("Content-Type", file.MimeType) // Use actual mime type from file
-		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, file.FileName))
+		w.WriteHeader(http.StatusOK)
 	}
 
 	// Stream the content to the client.
