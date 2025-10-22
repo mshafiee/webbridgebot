@@ -527,3 +527,44 @@ func GetLogChannelPeer(ctx *ext.Context, logChannelIdentifier string) (tg.InputP
 	}
 	return peer, nil
 }
+
+// ExtractFloodWait checks if an error is a FLOOD_WAIT error and extracts the wait time in seconds.
+// Returns (waitSeconds, true) if it's a FLOOD_WAIT error, or (0, false) otherwise.
+func ExtractFloodWait(err error) (int, bool) {
+	if err == nil {
+		return 0, false
+	}
+	
+	errText := err.Error()
+	// Pattern: FLOOD_WAIT (3) or FLOOD_WAIT_3 or similar variations
+	if strings.Contains(errText, "FLOOD_WAIT") {
+		// Try to extract the number from patterns like "FLOOD_WAIT (3)"
+		start := strings.Index(errText, "FLOOD_WAIT")
+		if start >= 0 {
+			remaining := errText[start:]
+			// Look for number in parentheses: FLOOD_WAIT (123)
+			if strings.Contains(remaining, "(") && strings.Contains(remaining, ")") {
+				startParen := strings.Index(remaining, "(")
+				endParen := strings.Index(remaining, ")")
+				if endParen > startParen {
+					numStr := strings.TrimSpace(remaining[startParen+1 : endParen])
+					if waitTime, err := strconv.Atoi(numStr); err == nil {
+						return waitTime, true
+					}
+				}
+			}
+			// Look for underscore format: FLOOD_WAIT_123
+			if strings.Contains(remaining, "_") {
+				parts := strings.Split(remaining, "_")
+				for _, part := range parts {
+					if waitTime, err := strconv.Atoi(strings.TrimSpace(part)); err == nil {
+						return waitTime, true
+					}
+				}
+			}
+		}
+		// If we found FLOOD_WAIT but couldn't extract time, default to 5 seconds
+		return 5, true
+	}
+	return 0, false
+}

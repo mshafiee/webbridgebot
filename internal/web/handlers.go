@@ -230,15 +230,35 @@ func (s *Server) handleAvatar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Fetch latest user photos (limit 1)
-	photosRes, err := s.tgClient.API().PhotosGetUserPhotos(ctx, &tg.PhotosGetUserPhotosRequest{
-		UserID: inputUser,
-		Offset: 0,
-		MaxID:  0,
-		Limit:  1,
-	})
+	// Fetch latest user photos (limit 1) with retry for FLOOD_WAIT
+	var photosRes tg.PhotosPhotosClass
+	maxRetries := 3
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		photosRes, err = s.tgClient.API().PhotosGetUserPhotos(ctx, &tg.PhotosGetUserPhotosRequest{
+			UserID: inputUser,
+			Offset: 0,
+			MaxID:  0,
+			Limit:  1,
+		})
+		if err == nil {
+			break
+		}
+
+		// Check for FLOOD_WAIT error
+		if floodWait, isFlood := utils.ExtractFloodWait(err); isFlood {
+			if attempt < maxRetries-1 {
+				s.logger.Printf("Avatar: FLOOD_WAIT for %d, waiting %d seconds (attempt %d/%d)", chatID, floodWait, attempt+1, maxRetries)
+				time.Sleep(time.Duration(floodWait) * time.Second)
+				continue
+			}
+		}
+
+		// If not FLOOD_WAIT or last attempt, break
+		break
+	}
+
 	if err != nil {
-		s.logger.Printf("Avatar: failed PhotosGetUserPhotos for %d: %v", chatID, err)
+		s.logger.Printf("Avatar: failed PhotosGetUserPhotos for %d after retries: %v", chatID, err)
 		http.NotFound(w, r)
 		return
 	}
