@@ -629,14 +629,14 @@ func (b *TelegramBot) handleMediaMessages(ctx *ext.Context, u *ext.Update) error
 					file = &types.DocumentFile{
 						FileName: "media_file",
 						MimeType: "application/octet-stream", // Will be detected from URL/headers
-						FileSize: 0, // Unknown size
+						FileSize: 0,                          // Unknown size
 					}
 					// Send the URL directly to the user
 					return b.sendMediaToUser(ctx, u, fileURL, file, isForwarded)
 				}
 			}
 		}
-		
+
 		b.logger.Printf("Error processing media message from chat ID %d, message ID %d: %v", chatID, u.EffectiveMessage.Message.ID, err)
 		if b.config.DebugMode {
 			b.logger.Printf("[DEBUG] Failed to extract file from media type: %T, error: %v", u.EffectiveMessage.Message.Media, err)
@@ -947,16 +947,44 @@ func (b *TelegramBot) handleCallbackQuery(ctx *ext.Context, u *ext.Update) error
 			}
 
 			file, err := utils.FileFromMessage(ctx, b.tgClient, messageID)
+			var fileURL string
+			
 			if err != nil {
-				b.logger.Printf("Error fetching file for message ID %d for callback: %v", messageID, err)
-				_, _ = ctx.AnswerCallback(&tg.MessagesSetBotCallbackAnswerRequest{
-					QueryID: u.CallbackQuery.QueryID,
-					Message: "Failed to retrieve file info.",
-				})
-				return nil
+				// Fallback: Try to extract URL from message entities (for WebPageEmpty)
+				message, msgErr := utils.GetMessage(ctx, b.tgClient, messageID)
+				if msgErr == nil && message.Media != nil {
+					if webPageMedia, ok := message.Media.(*tg.MessageMediaWebPage); ok {
+						if _, isEmpty := webPageMedia.Webpage.(*tg.WebPageEmpty); isEmpty {
+							extractedURL := utils.ExtractURLFromEntities(message)
+							if extractedURL != "" {
+								if b.config.DebugMode {
+									b.logger.Printf("[DEBUG] Callback: Extracted URL from entities for message %d: %s", messageID, extractedURL)
+								}
+								// Create a simple DocumentFile for URL-based media
+								file = &types.DocumentFile{
+									FileName: "media_file",
+									MimeType: "application/octet-stream",
+									FileSize: 0,
+								}
+								fileURL = extractedURL
+							}
+						}
+					}
+				}
+				
+				if fileURL == "" {
+					b.logger.Printf("Error fetching file for message ID %d for callback: %v", messageID, err)
+					_, _ = ctx.AnswerCallback(&tg.MessagesSetBotCallbackAnswerRequest{
+						QueryID: u.CallbackQuery.QueryID,
+						Message: "Failed to retrieve file info.",
+					})
+					return nil
+				}
+			} else {
+				fileURL = b.generateFileURL(messageID, file)
 			}
 
-			wsMsg := b.constructWebSocketMessage(b.generateFileURL(messageID, file), file)
+			wsMsg := b.constructWebSocketMessage(fileURL, file)
 			b.publishToWebSocket(u.EffectiveChat().GetID(), wsMsg)
 
 			_, _ = ctx.AnswerCallback(&tg.MessagesSetBotCallbackAnswerRequest{
