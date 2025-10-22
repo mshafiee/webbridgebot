@@ -477,6 +477,26 @@ func (b *TelegramBot) handleMediaMessages(ctx *ext.Context, u *ext.Update) error
 
 	if b.config.DebugMode {
 		b.logger.Printf("[DEBUG] Message ID: %d, Media Type: %T", u.EffectiveMessage.Message.ID, u.EffectiveMessage.Message.Media)
+		
+		// Log message text and entities
+		if u.EffectiveMessage.Message.Message != "" {
+			b.logger.Printf("[DEBUG] Message text length: %d", len(u.EffectiveMessage.Message.Message))
+		}
+		if len(u.EffectiveMessage.Message.Entities) > 0 {
+			b.logger.Printf("[DEBUG] Message has %d entities:", len(u.EffectiveMessage.Message.Entities))
+			for i, entity := range u.EffectiveMessage.Message.Entities {
+				b.logger.Printf("[DEBUG]   Entity %d: Type=%T, Offset=%d, Length=%d", 
+					i, entity, entity.GetOffset(), entity.GetLength())
+				if urlEntity, ok := entity.(*tg.MessageEntityTextURL); ok {
+					b.logger.Printf("[DEBUG]     URL: %s", urlEntity.URL)
+				}
+			}
+		}
+		
+		// Log media structure
+		if webPageMedia, ok := u.EffectiveMessage.Message.Media.(*tg.MessageMediaWebPage); ok {
+			b.logger.Printf("[DEBUG] MessageMediaWebPage detected - Webpage type: %T", webPageMedia.Webpage)
+		}
 	}
 
 	if !b.isUserChat(ctx, chatID) {
