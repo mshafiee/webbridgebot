@@ -477,7 +477,7 @@ func (b *TelegramBot) handleMediaMessages(ctx *ext.Context, u *ext.Update) error
 
 	if b.config.DebugMode {
 		b.logger.Printf("[DEBUG] Message ID: %d, Media Type: %T", u.EffectiveMessage.Message.ID, u.EffectiveMessage.Message.Media)
-		
+
 		// Log message text and entities
 		if u.EffectiveMessage.Message.Message != "" {
 			b.logger.Printf("[DEBUG] Message text length: %d", len(u.EffectiveMessage.Message.Message))
@@ -485,14 +485,14 @@ func (b *TelegramBot) handleMediaMessages(ctx *ext.Context, u *ext.Update) error
 		if len(u.EffectiveMessage.Message.Entities) > 0 {
 			b.logger.Printf("[DEBUG] Message has %d entities:", len(u.EffectiveMessage.Message.Entities))
 			for i, entity := range u.EffectiveMessage.Message.Entities {
-				b.logger.Printf("[DEBUG]   Entity %d: Type=%T, Offset=%d, Length=%d", 
+				b.logger.Printf("[DEBUG]   Entity %d: Type=%T, Offset=%d, Length=%d",
 					i, entity, entity.GetOffset(), entity.GetLength())
 				if urlEntity, ok := entity.(*tg.MessageEntityTextURL); ok {
 					b.logger.Printf("[DEBUG]     URL: %s", urlEntity.URL)
 				}
 			}
 		}
-		
+
 		// Log media structure
 		if webPageMedia, ok := u.EffectiveMessage.Message.Media.(*tg.MessageMediaWebPage); ok {
 			b.logger.Printf("[DEBUG] MessageMediaWebPage detected - Webpage type: %T", webPageMedia.Webpage)
@@ -616,6 +616,27 @@ func (b *TelegramBot) handleMediaMessages(ctx *ext.Context, u *ext.Update) error
 
 	file, err := utils.FileFromMedia(u.EffectiveMessage.Message.Media)
 	if err != nil {
+		// If FileFromMedia fails, try to extract URL from message entities (fallback for WebPageEmpty)
+		if webPageMedia, ok := u.EffectiveMessage.Message.Media.(*tg.MessageMediaWebPage); ok {
+			if _, isEmpty := webPageMedia.Webpage.(*tg.WebPageEmpty); isEmpty {
+				// Try to extract URL from message entities
+				fileURL := utils.ExtractURLFromEntities(u.EffectiveMessage.Message)
+				if fileURL != "" {
+					if b.config.DebugMode {
+						b.logger.Printf("[DEBUG] Extracted URL from message entities: %s", fileURL)
+					}
+					// Create a simple DocumentFile for URL-based media
+					file = &types.DocumentFile{
+						FileName: "media_file",
+						MimeType: "application/octet-stream", // Will be detected from URL/headers
+						FileSize: 0, // Unknown size
+					}
+					// Send the URL directly to the user
+					return b.sendMediaToUser(ctx, u, fileURL, file, isForwarded)
+				}
+			}
+		}
+		
 		b.logger.Printf("Error processing media message from chat ID %d, message ID %d: %v", chatID, u.EffectiveMessage.Message.ID, err)
 		if b.config.DebugMode {
 			b.logger.Printf("[DEBUG] Failed to extract file from media type: %T, error: %v", u.EffectiveMessage.Message.Media, err)

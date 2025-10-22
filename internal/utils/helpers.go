@@ -49,6 +49,33 @@ func GetMessage(ctx context.Context, client *gotgproto.Client, messageID int) (*
 	return nil, fmt.Errorf("message not found")
 }
 
+// ExtractURLFromEntities extracts the first URL from message entities (for WebPageEmpty fallback)
+func ExtractURLFromEntities(msg *tg.Message) string {
+	if msg == nil || len(msg.Entities) == 0 {
+		return ""
+	}
+	
+	// Look for MessageEntityTextURL or MessageEntityURL
+	for _, entity := range msg.Entities {
+		switch e := entity.(type) {
+		case *tg.MessageEntityTextURL:
+			// This is a text with embedded URL (most common in forwarded messages)
+			return e.URL
+		case *tg.MessageEntityURL:
+			// This is a plain URL in the text
+			// Extract the URL text from the message
+			offset := e.Offset
+			length := e.Length
+			if offset >= 0 && offset+length <= len([]rune(msg.Message)) {
+				runes := []rune(msg.Message)
+				return string(runes[offset : offset+length])
+			}
+		}
+	}
+	
+	return ""
+}
+
 // FileFromMedia extracts file information from various tg.MessageMediaClass types.
 func FileFromMedia(media tg.MessageMediaClass) (*types.DocumentFile, error) {
 	switch media := media.(type) {
@@ -178,11 +205,11 @@ func FileFromMedia(media tg.MessageMediaClass) (*types.DocumentFile, error) {
 				return nil, fmt.Errorf("unexpected webpage type: %T", wp)
 			}
 		}
-		
+
 		// Debug: Log webpage details
-		fmt.Printf("[DEBUG] WebPage found - ID: %d, URL: %s, Type: %s, Title: %s\n", 
+		fmt.Printf("[DEBUG] WebPage found - ID: %d, URL: %s, Type: %s, Title: %s\n",
 			webpage.ID, webpage.URL, webpage.Type, webpage.Title)
-		fmt.Printf("[DEBUG] WebPage - HasDocument: %v, HasPhoto: %v\n", 
+		fmt.Printf("[DEBUG] WebPage - HasDocument: %v, HasPhoto: %v\n",
 			webpage.Document != nil, webpage.Photo != nil)
 
 		// Check if webpage contains embedded document (video, audio, file)
