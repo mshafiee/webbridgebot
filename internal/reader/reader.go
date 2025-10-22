@@ -37,6 +37,24 @@ var (
 	rateLimiter = time.NewTicker(time.Second / maxRequestsPerSecond)
 	mu          sync.Mutex
 	baseDelay   = time.Second
+	
+	// Circuit breaker for chunk downloads
+	chunkFailures      = make(map[string]*circuitBreakerState)
+	chunkFailuresMutex sync.RWMutex
+)
+
+// circuitBreakerState tracks failure state for a specific chunk
+type circuitBreakerState struct {
+	failures       int
+	lastFailure    time.Time
+	blockedUntil   time.Time
+	consecutiveFails int
+}
+
+const (
+	circuitBreakerThreshold = 3         // Number of consecutive failures before opening circuit
+	circuitBreakerTimeout   = 5 * time.Minute // How long to block retries after circuit opens
+	circuitBreakerReset     = 1 * time.Minute  // Reset failure count after this period of no failures
 )
 
 // telegramClient defines the interface for the parts of the Telegram client that we use.
@@ -186,6 +204,12 @@ func (r *telegramReader) downloadAndCacheChunk(req *tg.UploadGetFileRequest, cac
 		return nil, fmt.Errorf("unsupported location type for caching in downloadAndCacheChunk: %T", req.Location)
 	}
 
+	// Check circuit breaker before attempting download
+	chunkKey := getChunkKey(locationID, int64(req.Offset))
+	if checkCircuitBreaker(chunkKey, r.log) {
+		return nil, fmt.Errorf("circuit breaker open for chunk at offset %d (location %d): too many recent failures", req.Offset, locationID)
+	}
+
 	for retryCount := 0; retryCount < maxRetries; retryCount++ {
 		mu.Lock()
 		<-rateLimiter.C
@@ -210,12 +234,17 @@ func (r *telegramReader) downloadAndCacheChunk(req *tg.UploadGetFileRequest, cac
 			}
 
 			r.log.Printf("Error during chunk download: %v", err)
+			// Record failure for circuit breaker
+			recordChunkFailure(chunkKey, r.log)
 			return nil, err
 		}
 
 		switch result := res.(type) {
 		case *tg.UploadFile:
 			chunkData := result.Bytes
+			// Record success for circuit breaker
+			recordChunkSuccess(chunkKey)
+			
 			// Write the downloaded chunk to cache. The cache implementation handles
 			// data that is smaller than its internal fixed chunk size.
 			err = r.cache.writeChunk(locationID, cacheChunkID, chunkData)
@@ -228,6 +257,8 @@ func (r *telegramReader) downloadAndCacheChunk(req *tg.UploadGetFileRequest, cac
 		}
 	}
 
+	// Record failure after exhausting all retries
+	recordChunkFailure(chunkKey, r.log)
 	return nil, fmt.Errorf("failed to download chunk %d for location %d after %d retries", cacheChunkID, locationID, maxRetries)
 }
 
@@ -337,4 +368,75 @@ func minInt64(vals ...int64) int64 {
 		}
 	}
 	return minVal
+}
+
+// getChunkKey generates a unique key for a chunk based on location and offset
+func getChunkKey(locationID int64, offset int64) string {
+	return fmt.Sprintf("%d:%d", locationID, offset)
+}
+
+// checkCircuitBreaker checks if the circuit is open for a given chunk
+// Returns true if the chunk should be blocked, false otherwise
+func checkCircuitBreaker(chunkKey string, logger *log.Logger) bool {
+	chunkFailuresMutex.RLock()
+	state, exists := chunkFailures[chunkKey]
+	chunkFailuresMutex.RUnlock()
+
+	if !exists {
+		return false
+	}
+
+	now := time.Now()
+
+	// If circuit is open (blocked), check if timeout has expired
+	if now.Before(state.blockedUntil) {
+		logger.Printf("Circuit breaker OPEN for chunk %s: blocked until %v (attempt blocked)", 
+			chunkKey, state.blockedUntil.Format(time.RFC3339))
+		return true
+	}
+
+	// If enough time has passed since last failure, reset the state
+	if now.After(state.lastFailure.Add(circuitBreakerReset)) {
+		chunkFailuresMutex.Lock()
+		delete(chunkFailures, chunkKey)
+		chunkFailuresMutex.Unlock()
+		logger.Printf("Circuit breaker RESET for chunk %s: failure history cleared", chunkKey)
+		return false
+	}
+
+	return false
+}
+
+// recordChunkFailure records a failure for a chunk and potentially opens the circuit
+func recordChunkFailure(chunkKey string, logger *log.Logger) {
+	chunkFailuresMutex.Lock()
+	defer chunkFailuresMutex.Unlock()
+
+	state, exists := chunkFailures[chunkKey]
+	if !exists {
+		state = &circuitBreakerState{}
+		chunkFailures[chunkKey] = state
+	}
+
+	state.failures++
+	state.consecutiveFails++
+	state.lastFailure = time.Now()
+
+	// Open circuit if threshold exceeded
+	if state.consecutiveFails >= circuitBreakerThreshold {
+		state.blockedUntil = time.Now().Add(circuitBreakerTimeout)
+		logger.Printf("Circuit breaker OPENED for chunk %s: %d consecutive failures, blocking for %v",
+			chunkKey, state.consecutiveFails, circuitBreakerTimeout)
+	}
+}
+
+// recordChunkSuccess records a successful download and resets consecutive failures
+func recordChunkSuccess(chunkKey string) {
+	chunkFailuresMutex.Lock()
+	defer chunkFailuresMutex.Unlock()
+
+	if state, exists := chunkFailures[chunkKey]; exists {
+		state.consecutiveFails = 0
+		// Keep the total failure count for statistics, but reset consecutive failures
+	}
 }
