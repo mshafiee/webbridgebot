@@ -114,6 +114,17 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check for reconnection patterns
+	isReconnection, prevConn := s.connTracker.DetectReconnection(messageID, r.RemoteAddr, start)
+	if isReconnection && prevConn != nil {
+		timeSinceDisconnect := time.Since(*prevConn.DisconnectTime)
+		s.logger.Printf("Reconnection detected for message ID %d from %s (disconnected %.1fs ago, previously streamed %d bytes from offset %d)",
+			messageID, r.RemoteAddr, timeSinceDisconnect.Seconds(), prevConn.BytesStreamed, prevConn.RangeStart)
+	}
+
+	// Register this connection for tracking
+	connectionID := s.connTracker.RegisterConnection(messageID, r.RemoteAddr, start, end)
+
 	// For large video files (>100MB) without a Range header, force a small initial chunk
 	// This must be done BEFORE creating the TelegramReader to avoid Content-Length mismatch
 	const largeFileThreshold = 100 * 1024 * 1024 // 100MB
@@ -156,16 +167,45 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}
 
-	// Stream the content to the client
-	if _, err := io.Copy(w, lr); err != nil {
+	// Stream the content to the client with tracking
+	streamStart := time.Now()
+	bytesWritten, err := io.Copy(w, lr)
+	streamDuration := time.Since(streamStart)
+
+	// Calculate streaming statistics
+	expectedBytes := end - start + 1
+	percentageStreamed := float64(bytesWritten) / float64(expectedBytes) * 100
+	avgSpeedMBps := 0.0
+	if streamDuration.Seconds() > 0 {
+		avgSpeedMBps = float64(bytesWritten) / (1024 * 1024) / streamDuration.Seconds()
+	}
+
+	if err != nil {
 		// These errors are expected if the client disconnects
 		if isClientDisconnectError(err) {
-			if s.config.DebugMode {
-				s.logger.Debugf("Client disconnected during stream for message ID %d from %s", messageID, r.RemoteAddr)
-			}
+			// Always log client disconnections at INFO level for visibility
+			s.logger.Printf("Client disconnected during stream for message ID %d from %s (streamed %d/%d bytes [%.1f%%] in %v, avg: %.2f MB/s)",
+				messageID, r.RemoteAddr, bytesWritten, expectedBytes, percentageStreamed, streamDuration, avgSpeedMBps)
+			s.connTracker.MarkDisconnected(connectionID, bytesWritten)
 		} else {
-			s.logger.Printf("Error streaming content for message ID %d: %v", messageID, err)
+			s.logger.Printf("Error streaming content for message ID %d: %v (streamed %d/%d bytes [%.1f%%] in %v)",
+				messageID, err, bytesWritten, expectedBytes, percentageStreamed, streamDuration)
+			s.connTracker.MarkError(connectionID, bytesWritten, err)
 		}
+	} else {
+		// Log successful completion
+		s.logger.Printf("Stream completed successfully for message ID %d to %s (%d bytes in %v, avg speed: %.2f MB/s)",
+			messageID, r.RemoteAddr, bytesWritten, streamDuration, avgSpeedMBps)
+		s.connTracker.MarkCompleted(connectionID, bytesWritten)
+	}
+
+	// Log connection statistics if in debug mode
+	if s.config.DebugMode {
+		activeConns := s.connTracker.GetActiveConnections()
+		stats := s.connTracker.GetStatistics()
+		s.logger.Debugf("Connection stats: Active=%d, Total=%v, Completed=%v, Disconnected=%v, Errors=%v, Total streamed=%.2f GB",
+			activeConns, stats["total_connections"], stats["completed_streams"],
+			stats["disconnected_streams"], stats["errored_streams"], stats["total_gb_streamed"])
 	}
 }
 
@@ -341,11 +381,16 @@ func (s *Server) handleAvatar(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Length", strconv.Itoa(sizeBytes))
 	}
 
-	if _, err := io.Copy(w, rc); err != nil {
-		// Only log unexpected errors, client disconnects are normal
-		if !isClientDisconnectError(err) {
-			s.logger.Printf("Avatar: stream error for %d: %v", chatID, err)
+	bytesWritten, err := io.Copy(w, rc)
+	if err != nil {
+		// Log all errors, but differentiate between client disconnects and other errors
+		if isClientDisconnectError(err) {
+			s.logger.Printf("Avatar: client disconnected for %d after %d bytes", chatID, bytesWritten)
+		} else {
+			s.logger.Printf("Avatar: stream error for %d: %v (streamed %d bytes)", chatID, err, bytesWritten)
 		}
+	} else if s.config.DebugMode {
+		s.logger.Debugf("Avatar: successfully streamed %d bytes for chatID %d", bytesWritten, chatID)
 	}
 }
 
@@ -499,6 +544,81 @@ func (s *Server) handleValidateUser(w http.ResponseWriter, r *http.Request) {
 	})
 
 	s.logger.Printf("Successfully validated user ID %d for requester %d", userID, requestingChatID)
+}
+
+// handleConnectionStats provides statistics about streaming connections
+func (s *Server) handleConnectionStats(w http.ResponseWriter, r *http.Request) {
+	// Only allow GET requests
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Get the requesting user's chat ID from the URL path
+	vars := mux.Vars(r)
+	requestingChatID, err := parseChatID(vars)
+	if err != nil {
+		http.Error(w, "Invalid chat ID", http.StatusBadRequest)
+		return
+	}
+
+	// Verify the requesting user is authorized
+	requestingUser, err := s.userRepository.GetUserInfo(requestingChatID)
+	if err != nil || !requestingUser.IsAuthorized {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		s.logger.Printf("Unauthorized connection-stats request from chatID %d", requestingChatID)
+		return
+	}
+
+	// Get statistics
+	stats := s.connTracker.GetStatistics()
+	activeConns := s.connTracker.GetActiveConnections()
+
+	// Add active connections to stats
+	statsWithActive := make(map[string]interface{})
+	for k, v := range stats {
+		statsWithActive[k] = v
+	}
+	statsWithActive["current_active"] = activeConns
+
+	// Optional: Get details for a specific message ID
+	messageIDStr := r.URL.Query().Get("messageId")
+	if messageIDStr != "" {
+		messageID, err := strconv.Atoi(messageIDStr)
+		if err == nil {
+			connections := s.connTracker.GetConnectionsByMessageID(messageID)
+			var connDetails []map[string]interface{}
+			for _, conn := range connections {
+				detail := map[string]interface{}{
+					"client_addr":    conn.ClientAddr,
+					"start_time":     conn.StartTime,
+					"bytes_streamed": conn.BytesStreamed,
+					"range_start":    conn.RangeStart,
+					"range_end":      conn.RangeEnd,
+					"completed":      conn.Completed,
+					"last_activity":  conn.LastActivity,
+				}
+				if conn.DisconnectTime != nil {
+					detail["disconnect_time"] = *conn.DisconnectTime
+					detail["duration"] = conn.DisconnectTime.Sub(conn.StartTime).String()
+				}
+				if conn.Error != nil {
+					detail["error"] = conn.Error.Error()
+				}
+				connDetails = append(connDetails, detail)
+			}
+			statsWithActive["message_connections"] = connDetails
+		}
+	}
+
+	// Return statistics as JSON
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(statsWithActive); err != nil {
+		s.logger.Printf("Error encoding connection stats: %v", err)
+	}
+
+	s.logger.Printf("Connection statistics provided to chatID %d", requestingChatID)
 }
 
 // isClientDisconnectError checks if an error is caused by client disconnection
