@@ -80,23 +80,33 @@ type telegramReader struct {
 	maxRetries int
 	baseDelay  time.Duration
 	maxDelay   time.Duration
+	apiTimeout time.Duration
+
+	// Dynamic chunk sizing for handling timeouts
+	consecutiveTimeouts int
+	requestLimit        int64
+	successfulChunks    int
 }
 
-func NewTelegramReader(ctx context.Context, client *gotgproto.Client, location tg.InputFileLocationClass, start int64, end int64, contentLength int64, cache *BinaryCache, log *logger.Logger, debugMode bool, maxRetries int, retryBaseDelay int, maxRetryDelay int) (io.ReadCloser, error) {
+func NewTelegramReader(ctx context.Context, client *gotgproto.Client, location tg.InputFileLocationClass, start int64, end int64, contentLength int64, cache *BinaryCache, log *logger.Logger, debugMode bool, maxRetries int, retryBaseDelay int, maxRetryDelay int, apiTimeout int) (io.ReadCloser, error) {
 	r := &telegramReader{
-		ctx:           ctx,
-		log:           log,
-		location:      location,
-		client:        client,
-		start:         start,
-		end:           end,
-		chunkSize:     preferredChunkSize,
-		contentLength: contentLength,
-		cache:         cache,
-		debugMode:     debugMode,
-		maxRetries:    maxRetries,
-		baseDelay:     time.Duration(retryBaseDelay) * time.Second,
-		maxDelay:      time.Duration(maxRetryDelay) * time.Second,
+		ctx:                 ctx,
+		log:                 log,
+		location:            location,
+		client:              client,
+		start:               start,
+		end:                 end,
+		chunkSize:           preferredChunkSize,
+		contentLength:       contentLength,
+		cache:               cache,
+		debugMode:           debugMode,
+		maxRetries:          maxRetries,
+		baseDelay:           time.Duration(retryBaseDelay) * time.Second,
+		maxDelay:            time.Duration(maxRetryDelay) * time.Second,
+		apiTimeout:          time.Duration(apiTimeout) * time.Second,
+		requestLimit:        preferredChunkSize,
+		consecutiveTimeouts: 0,
+		successfulChunks:    0,
 	}
 	if r.debugMode {
 		r.log.Debug("Initializing TelegramReader.")
@@ -223,6 +233,10 @@ func (r *telegramReader) downloadAndCacheChunk(req *tg.UploadGetFileRequest, cac
 		return nil, fmt.Errorf("circuit breaker open for chunk at offset %d (location %d): too many recent failures", req.Offset, locationID)
 	}
 
+	// Apply dynamic request limit (may be smaller than req.Limit due to timeouts)
+	actualLimit := minInt64(r.requestLimit, int64(req.Limit))
+	req.Limit = int(actualLimit)
+
 	for retryCount := 0; retryCount < r.maxRetries; retryCount++ {
 		mu.Lock()
 		<-rateLimiter.C
@@ -234,7 +248,7 @@ func (r *telegramReader) downloadAndCacheChunk(req *tg.UploadGetFileRequest, cac
 		}
 
 		// Add timeout to prevent hanging on slow API calls
-		timeoutCtx, cancel := context.WithTimeout(r.ctx, 30*time.Second)
+		timeoutCtx, cancel := context.WithTimeout(r.ctx, r.apiTimeout)
 		res, err := r.client.API().UploadGetFile(timeoutCtx, req)
 		cancel() // Release resources immediately after call
 
@@ -246,6 +260,28 @@ func (r *telegramReader) downloadAndCacheChunk(req *tg.UploadGetFileRequest, cac
 			}
 
 			if isTransientError(err) {
+				// Check if this is specifically a timeout error
+				isTimeout := errors.Is(err, context.DeadlineExceeded) ||
+					regexp.MustCompile(`rpc error code -503`).MatchString(err.Error())
+
+				if isTimeout {
+					r.consecutiveTimeouts++
+
+					// Reduce chunk size after 3 consecutive timeouts
+					if r.consecutiveTimeouts >= 3 && r.requestLimit > 65536 { // 64KB minimum
+						oldLimit := r.requestLimit
+						r.requestLimit = r.requestLimit / 2
+						if r.requestLimit < 65536 {
+							r.requestLimit = 65536
+						}
+						r.log.Printf("Reducing chunk size from %d to %d bytes after %d consecutive timeouts",
+							oldLimit, r.requestLimit, r.consecutiveTimeouts)
+						// Update the request limit for this attempt
+						actualLimit := minInt64(r.requestLimit, int64(req.Limit))
+						req.Limit = int(actualLimit)
+					}
+				}
+
 				r.log.Printf("Transient error: %v, retrying in %v (attempt %d/%d)", err, delay, retryCount+1, r.maxRetries)
 				time.Sleep(delay)
 				delay = minDuration(delay*2, r.maxDelay)
@@ -263,6 +299,23 @@ func (r *telegramReader) downloadAndCacheChunk(req *tg.UploadGetFileRequest, cac
 			chunkData := result.Bytes
 			// Record success for circuit breaker
 			recordChunkSuccess(chunkKey)
+
+			// Reset timeout counter and increment successful chunks on success
+			r.consecutiveTimeouts = 0
+			r.successfulChunks++
+
+			// Restore chunk size after 5 successful downloads
+			if r.successfulChunks >= 5 && r.requestLimit < preferredChunkSize {
+				r.log.Printf("Restored chunk size from %d to %d bytes after %d successful downloads",
+					r.requestLimit, preferredChunkSize, r.successfulChunks)
+				r.requestLimit = preferredChunkSize
+				r.successfulChunks = 0
+			}
+
+			// Log successful retry if this wasn't the first attempt
+			if retryCount > 0 {
+				r.log.Printf("Successfully downloaded chunk after %d attempts", retryCount+1)
+			}
 
 			// Write the downloaded chunk to cache. The cache implementation handles
 			// data that is smaller than its internal fixed chunk size.
@@ -292,18 +345,17 @@ func (r *telegramReader) partStream() func() ([]byte, error) {
 			return nil, io.EOF
 		}
 
-		// The limit for the Telegram API request is consistently preferredChunkSize.
-		// Asking for a larger chunk than remaining is handled by the API returning fewer bytes,
-		// as long as the limit itself is valid (e.g., a power-of-2 multiple of 4096).
-		limitToRequest := r.chunkSize
+		// Use dynamic requestLimit for API calls (may be reduced due to timeouts)
+		// but keep offset alignment to r.chunkSize for cache consistency
+		limitToRequest := r.requestLimit
 
 		if limitToRequest > telegramMaxLimit {
 			limitToRequest = telegramMaxLimit
 		}
 
 		if r.debugMode {
-			r.log.Debugf("Requesting chunk: Offset=%d, Limit=%d (using fixed preferredChunkSize)",
-				currentAPIOffset, limitToRequest)
+			r.log.Debugf("Requesting chunk: Offset=%d, Limit=%d (dynamic limit, cache-aligned to %d)",
+				currentAPIOffset, limitToRequest, r.chunkSize)
 		}
 
 		chunkData, err := r.chunk(currentAPIOffset, limitToRequest)

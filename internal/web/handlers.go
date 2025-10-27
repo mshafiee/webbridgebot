@@ -127,7 +127,7 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create a TelegramReader to stream the content with the correct range
-	lr, err := reader.NewTelegramReader(context.Background(), s.tgClient, file.Location, start, end, contentLength, s.config.BinaryCache, s.logger, s.config.DebugMode, s.config.MaxRetries, s.config.RetryBaseDelay, s.config.MaxRetryDelay)
+	lr, err := reader.NewTelegramReader(context.Background(), s.tgClient, file.Location, start, end, contentLength, s.config.BinaryCache, s.logger, s.config.DebugMode, s.config.MaxRetries, s.config.RetryBaseDelay, s.config.MaxRetryDelay, s.config.RequestTimeout)
 	if err != nil {
 		s.logger.Printf("Error creating Telegram reader for message ID %d: %v", messageID, err)
 		http.Error(w, "Failed to initialize file stream", http.StatusInternalServerError)
@@ -327,7 +327,7 @@ func (s *Server) handleAvatar(w http.ResponseWriter, r *http.Request) {
 		end = 0
 	}
 
-	rc, err := reader.NewTelegramReader(ctx, s.tgClient, location, start, end, int64(sizeBytes), s.config.BinaryCache, s.logger, s.config.DebugMode, s.config.MaxRetries, s.config.RetryBaseDelay, s.config.MaxRetryDelay)
+	rc, err := reader.NewTelegramReader(ctx, s.tgClient, location, start, end, int64(sizeBytes), s.config.BinaryCache, s.logger, s.config.DebugMode, s.config.MaxRetries, s.config.RetryBaseDelay, s.config.MaxRetryDelay, s.config.RequestTimeout)
 	if err != nil {
 		s.logger.Printf("Avatar: reader init failed for %d: %v", chatID, err)
 		http.NotFound(w, r)

@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"syscall"
 	"testing"
 	"time"
+	"webBridgeBot/internal/logger"
 
 	"github.com/gotd/td/tg"
 	"github.com/stretchr/testify/assert"
@@ -22,14 +22,16 @@ func TestTelegramReader_ReadLogic(t *testing.T) {
 
 	// testHarness creates a telegramReader with a mocked chunk fetching function.
 	testHarness := func(t *testing.T, start, end, contentLength int64, mockChunker func(offset, limit int64) ([]byte, error)) io.ReadCloser {
+		log := logger.New(io.Discard, "test", logger.INFO, false)
 		r := &telegramReader{
 			ctx:           context.Background(),
-			log:           log.New(io.Discard, "", 0),
+			log:           log,
 			location:      &tg.InputDocumentFileLocation{ID: 12345},
 			start:         start,
 			end:           end,
 			chunkSize:     preferredChunkSize,
 			contentLength: contentLength,
+			requestLimit:  preferredChunkSize,
 		}
 
 		// This partStream is a copy of the original but calls our mockChunker.
@@ -39,7 +41,7 @@ func TestTelegramReader_ReadLogic(t *testing.T) {
 				if currentAPIOffset >= r.contentLength {
 					return nil, io.EOF
 				}
-				limitToRequest := r.chunkSize
+				limitToRequest := r.requestLimit
 				if limitToRequest > telegramMaxLimit {
 					limitToRequest = telegramMaxLimit
 				}
@@ -99,16 +101,24 @@ func TestTelegramReader_ReadLogic(t *testing.T) {
 // newTestReader creates a telegramReader instance with a mocked API client.
 // This is the primary helper for integration-style tests.
 func newTestReader(t *testing.T, client telegramClient, location tg.InputFileLocationClass, cache *BinaryCache, start, end, contentLength int64) *telegramReader {
+	log := logger.New(io.Discard, "test", logger.INFO, false)
 	r := &telegramReader{
-		ctx:           context.Background(),
-		log:           log.New(io.Discard, "", 0),
-		location:      location,
-		client:        client,
-		start:         start,
-		end:           end,
-		chunkSize:     preferredChunkSize,
-		contentLength: contentLength,
-		cache:         cache,
+		ctx:                 context.Background(),
+		log:                 log,
+		location:            location,
+		client:              client,
+		start:               start,
+		end:                 end,
+		chunkSize:           preferredChunkSize,
+		contentLength:       contentLength,
+		cache:               cache,
+		maxRetries:          10,
+		baseDelay:           time.Second,
+		maxDelay:            60 * time.Second,
+		apiTimeout:          300 * time.Second,
+		requestLimit:        preferredChunkSize,
+		consecutiveTimeouts: 0,
+		successfulChunks:    0,
 	}
 	r.next = r.partStream()
 	return r
@@ -118,13 +128,10 @@ func newTestReader(t *testing.T, client telegramClient, location tg.InputFileLoc
 func TestTelegramReader_CachingAndRetries(t *testing.T) {
 	// Speed up tests by reducing retry delays.
 	oldRateLimiter := rateLimiter
-	oldBaseDelay := baseDelay
 	rateLimiter = time.NewTicker(time.Microsecond)
-	baseDelay = time.Microsecond
 	t.Cleanup(func() {
 		rateLimiter.Stop()
 		rateLimiter = oldRateLimiter
-		baseDelay = oldBaseDelay
 	})
 
 	testData := generateTestData(int(preferredChunkSize))
