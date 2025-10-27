@@ -691,7 +691,16 @@ func (b *TelegramBot) isUserChat(ctx *ext.Context, chatID int64) bool {
 }
 
 func (b *TelegramBot) sendReply(ctx *ext.Context, u *ext.Update, msg string) error {
-	_, err := ctx.Reply(u, ext.ReplyTextString(msg), &ext.ReplyOpts{})
+	chatID := u.EffectiveChat().GetID()
+	peer := ctx.PeerStorage.GetInputPeerById(chatID)
+
+	req := &tg.MessagesSendMessageRequest{
+		Peer:     peer,
+		Message:  msg,
+		Entities: []tg.MessageEntityClass{}, // Enable entity parsing
+	}
+
+	_, err := ctx.SendMessage(chatID, req)
 	if err != nil {
 		b.logger.Printf("Failed to send reply to user: %s (ID: %d) - Error: %v", u.EffectiveUser().FirstName, u.EffectiveUser().ID, err)
 	}
@@ -699,8 +708,17 @@ func (b *TelegramBot) sendReply(ctx *ext.Context, u *ext.Update, msg string) err
 }
 
 func (b *TelegramBot) sendMediaURLReply(ctx *ext.Context, u *ext.Update, msg, webURL string) error {
-	_, err := ctx.Reply(u, ext.ReplyTextString(msg), &ext.ReplyOpts{
-		Markup: &tg.ReplyInlineMarkup{
+	chatID := u.EffectiveChat().GetID()
+	peer := ctx.PeerStorage.GetInputPeerById(chatID)
+
+	// Parse markdown-style formatting and convert to Telegram entities
+	entities := b.parseMarkdownToEntities(msg)
+
+	req := &tg.MessagesSendMessageRequest{
+		Peer:     peer,
+		Message:  b.stripMarkdownSyntax(msg),
+		Entities: entities,
+		ReplyMarkup: &tg.ReplyInlineMarkup{
 			Rows: []tg.KeyboardButtonRow{
 				{
 					Buttons: []tg.KeyboardButtonClass{
@@ -710,7 +728,9 @@ func (b *TelegramBot) sendMediaURLReply(ctx *ext.Context, u *ext.Update, msg, we
 				},
 			},
 		},
-	})
+	}
+
+	_, err := ctx.SendMessage(chatID, req)
 	if err != nil {
 		b.logger.Printf("Failed to send reply to user: %s (ID: %d) - Error: %v", u.EffectiveUser().FirstName, u.EffectiveUser().ID, err)
 	}
@@ -1344,4 +1364,44 @@ func escapeMarkdownV2(text string) string {
 		"=", "\\=", "|", "\\|", "{", "\\{", "}", "\\}", ".", "\\.", "!", "\\!",
 	)
 	return replacer.Replace(text)
+}
+
+// parseMarkdownToEntities converts simple **bold** markdown to Telegram message entities
+func (b *TelegramBot) parseMarkdownToEntities(text string) []tg.MessageEntityClass {
+	var entities []tg.MessageEntityClass
+	strippedOffset := 0 // Position in the text without markdown syntax
+	i := 0
+
+	for i < len(text) {
+		if i+1 < len(text) && text[i:i+2] == "**" {
+			// Find the closing **
+			end := strings.Index(text[i+2:], "**")
+			if end != -1 {
+				// Found a bold section
+				boldText := text[i+2 : i+2+end]
+
+				entities = append(entities, &tg.MessageEntityBold{
+					Offset: strippedOffset,
+					Length: len(boldText),
+				})
+
+				// Move past the closing **
+				i += 2 + end + 2
+				strippedOffset += len(boldText)
+				continue
+			}
+		}
+		// Regular character, just move forward
+		i++
+		strippedOffset++
+	}
+
+	return entities
+}
+
+// stripMarkdownSyntax removes markdown syntax characters from text
+func (b *TelegramBot) stripMarkdownSyntax(text string) string {
+	// Remove ** for bold
+	result := strings.ReplaceAll(text, "**", "")
+	return result
 }
