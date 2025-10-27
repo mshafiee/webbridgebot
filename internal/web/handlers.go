@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
@@ -415,6 +416,89 @@ func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
 	if s.config.DebugMode {
 		s.logger.Debugf("Proxy completed for URL: %s", externalURL)
 	}
+}
+
+// handleValidateUser validates if a user ID exists and is authorized
+func (s *Server) handleValidateUser(w http.ResponseWriter, r *http.Request) {
+	// Only allow GET requests
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Get the requesting user's chat ID from the URL path
+	vars := mux.Vars(r)
+	requestingChatID, err := parseChatID(vars)
+	if err != nil {
+		http.Error(w, "Invalid chat ID", http.StatusBadRequest)
+		return
+	}
+
+	// Verify the requesting user is authorized
+	requestingUser, err := s.userRepository.GetUserInfo(requestingChatID)
+	if err != nil || !requestingUser.IsAuthorized {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		s.logger.Printf("Unauthorized validate-user request from chatID %d", requestingChatID)
+		return
+	}
+
+	// Get the user ID to validate from query parameters
+	userIDStr := r.URL.Query().Get("userId")
+	if userIDStr == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "Missing userId parameter",
+		})
+		return
+	}
+
+	// Parse the user ID
+	userID, err := strconv.ParseInt(userIDStr, 10, 64)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "Invalid user ID format",
+		})
+		return
+	}
+
+	// Fetch user info from database
+	userInfo, err := s.userRepository.GetUserInfo(userID)
+	if err != nil {
+		s.logger.Printf("User ID %d not found: %v", userID, err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "User not found",
+		})
+		return
+	}
+
+	// Check if user is authorized
+	if !userInfo.IsAuthorized {
+		s.logger.Printf("User ID %d is not authorized", userID)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "User is not authorized in the app",
+		})
+		return
+	}
+
+	// Return user details
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"userID":    userInfo.UserID,
+		"chatID":    userInfo.ChatID,
+		"firstName": userInfo.FirstName,
+		"lastName":  userInfo.LastName,
+		"username":  userInfo.Username,
+	})
+
+	s.logger.Printf("Successfully validated user ID %d for requester %d", userID, requestingChatID)
 }
 
 // isClientDisconnectError checks if an error is caused by client disconnection

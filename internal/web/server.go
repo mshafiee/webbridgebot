@@ -51,6 +51,7 @@ func (s *Server) Start() {
 	// Register routes
 	router.HandleFunc("/ws/{chatID}", s.handleWebSocket)
 	router.HandleFunc("/avatar/{chatID}", s.handleAvatar)
+	router.HandleFunc("/api/validate-user/{chatID}", s.handleValidateUser)
 	router.HandleFunc("/proxy", s.handleProxy)
 	router.HandleFunc("/{messageID}/{hash}", s.handleStream)
 	router.HandleFunc("/{chatID}", s.handlePlayer)

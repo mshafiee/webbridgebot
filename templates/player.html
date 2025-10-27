@@ -1030,6 +1030,293 @@
                 transform: none;
             }
         }
+
+        /* Add User Modal Styles */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            animation: fadeIn 0.2s ease;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border-medium);
+            border-radius: var(--radius-lg);
+            padding: var(--spacing-xl);
+            width: 90%;
+            max-width: 450px;
+            box-shadow: var(--shadow-xl);
+            animation: scaleIn 0.3s ease;
+        }
+
+        .modal-header {
+            margin-bottom: var(--spacing-lg);
+        }
+
+        .modal-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: var(--spacing-xs);
+        }
+
+        .modal-subtitle {
+            font-size: 0.875rem;
+            color: var(--text-tertiary);
+        }
+
+        .modal-body {
+            margin-bottom: var(--spacing-lg);
+        }
+
+        .form-group {
+            margin-bottom: var(--spacing-md);
+        }
+
+        .form-label {
+            display: block;
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: var(--spacing-xs);
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 0.75rem var(--spacing-md);
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            color: var(--text-primary);
+            font-size: 0.9375rem;
+            font-family: inherit;
+            outline: none;
+            transition: all var(--transition-base);
+        }
+
+        .form-input:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+        }
+
+        .form-input::placeholder {
+            color: var(--text-muted);
+        }
+
+        .user-preview {
+            display: none;
+            padding: var(--spacing-md);
+            background: var(--glass-light);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            margin-top: var(--spacing-md);
+            animation: fadeIn 0.3s ease;
+        }
+
+        .user-preview.active {
+            display: block;
+        }
+
+        .user-preview-header {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-md);
+            margin-bottom: var(--spacing-sm);
+        }
+
+        .user-preview-avatar {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: var(--bg-tertiary);
+            border: 2px solid var(--border-subtle);
+            overflow: hidden;
+        }
+
+        .user-preview-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .user-preview-avatar .avatar-initials {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .user-preview-info {
+            flex: 1;
+        }
+
+        .user-preview-name {
+            font-size: 1.125rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 0.25rem;
+        }
+
+        .user-preview-username {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        .user-preview-id {
+            font-size: 0.8125rem;
+            color: var(--text-tertiary);
+            margin-top: var(--spacing-xs);
+        }
+
+        .modal-error {
+            display: none;
+            padding: 0.75rem var(--spacing-md);
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: var(--radius-md);
+            color: var(--error);
+            font-size: 0.875rem;
+            margin-top: var(--spacing-md);
+            animation: fadeIn 0.3s ease;
+        }
+
+        .modal-error.active {
+            display: block;
+        }
+
+        .modal-footer {
+            display: flex;
+            gap: var(--spacing-sm);
+            justify-content: flex-end;
+        }
+
+        .modal-button {
+            padding: 0.625rem 1.25rem;
+            font-size: 0.875rem;
+            font-weight: 600;
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border-subtle);
+            cursor: pointer;
+            transition: all var(--transition-base);
+            font-family: inherit;
+            outline: none;
+        }
+
+        .modal-button-primary {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+
+        .modal-button-primary:hover:not(:disabled) {
+            background: var(--primary-dark);
+            transform: translateY(-1px);
+            box-shadow: var(--shadow-md);
+        }
+
+        .modal-button-secondary {
+            background: transparent;
+            color: var(--text-secondary);
+            border-color: var(--border-medium);
+        }
+
+        .modal-button-secondary:hover:not(:disabled) {
+            background: var(--glass-light);
+            color: var(--text-primary);
+        }
+
+        .modal-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .add-user-button {
+            position: relative;
+            width: 56px;
+            height: 56px;
+            flex-shrink: 0;
+            border-radius: 50%;
+            cursor: pointer;
+            outline: none;
+            border: 2px dashed var(--border-medium);
+            background: var(--glass-light);
+            transition: all var(--transition-base);
+            box-shadow: var(--shadow-sm);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-secondary);
+            font-size: 1.5rem;
+            font-weight: 300;
+        }
+
+        .add-user-button:hover {
+            transform: translateY(-4px) scale(1.05);
+            border-color: var(--primary);
+            background: var(--glass-medium);
+            color: var(--primary);
+            box-shadow: var(--shadow-md), 0 0 0 4px rgba(99, 102, 241, 0.15);
+        }
+
+        .add-user-button:focus-visible {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.3);
+        }
+
+        @media (max-width: 768px) {
+            .add-user-button {
+                width: 48px;
+                height: 48px;
+                font-size: 1.25rem;
+            }
+
+            .modal-content {
+                padding: var(--spacing-lg);
+            }
+
+            .modal-title {
+                font-size: 1.25rem;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .add-user-button {
+                width: 44px;
+                height: 44px;
+                font-size: 1.125rem;
+            }
+
+            .modal-content {
+                padding: var(--spacing-md);
+            }
+
+            .modal-footer {
+                flex-direction: column-reverse;
+            }
+
+            .modal-button {
+                width: 100%;
+            }
+        }
     </style>
 </head>
 <body>
@@ -1823,12 +2110,24 @@
                 bar.style.display = 'flex';
                 
                 // Show/hide users section based on user count
-                if (list.length < 2) { 
+                if (list.length < 1) { 
                     if (usersSection) usersSection.style.display = 'none';
                     return; 
                 }
                 
                 if (usersSection) usersSection.style.display = 'flex';
+
+                // Add the "+" button at the beginning
+                const addButton = document.createElement('button');
+                addButton.className = 'add-user-button';
+                addButton.type = 'button';
+                addButton.title = 'Add user';
+                addButton.setAttribute('aria-label', 'Add user to recent list');
+                addButton.textContent = '+';
+                addButton.addEventListener('click', () => {
+                    addUserModal.open();
+                });
+                track.appendChild(addButton);
 
                 list.forEach(item => {
                     const chatID = String(item.chatID);
@@ -1893,8 +2192,246 @@
                 });
             };
 
-            return { persistCurrentUser, render };
+            return { persistCurrentUser, render, load, save };
+        })();
+
+        // Add User Modal Logic
+        const addUserModal = (() => {
+            const modal = document.getElementById('addUserModal');
+            const userIdInput = document.getElementById('userIdInput');
+            const validateBtn = document.getElementById('modalValidateBtn');
+            const confirmBtn = document.getElementById('modalConfirmBtn');
+            const cancelBtn = document.getElementById('modalCancelBtn');
+            const userPreview = document.getElementById('userPreview');
+            const modalError = document.getElementById('modalError');
+            const previewAvatar = document.getElementById('previewAvatar');
+            const previewName = document.getElementById('previewName');
+            const previewUsername = document.getElementById('previewUsername');
+            const previewId = document.getElementById('previewId');
+
+            let validatedUser = null;
+
+            const open = () => {
+                modal.classList.add('active');
+                userIdInput.value = '';
+                userIdInput.focus();
+                hidePreview();
+                hideError();
+                validateBtn.style.display = 'inline-block';
+                confirmBtn.style.display = 'none';
+                validatedUser = null;
+            };
+
+            const close = () => {
+                modal.classList.remove('active');
+                userIdInput.value = '';
+                hidePreview();
+                hideError();
+                validatedUser = null;
+            };
+
+            const showError = (message) => {
+                modalError.textContent = message;
+                modalError.classList.add('active');
+            };
+
+            const hideError = () => {
+                modalError.classList.remove('active');
+                modalError.textContent = '';
+            };
+
+            const showPreview = (user) => {
+                // Set user details
+                const fullName = `${user.firstName}${user.lastName ? ' ' + user.lastName : ''}`;
+                previewName.textContent = fullName;
+                previewUsername.textContent = user.username ? `@${user.username}` : 'No username';
+                previewId.textContent = `User ID: ${user.userID}`;
+
+                // Set avatar
+                previewAvatar.innerHTML = '';
+                const img = document.createElement('img');
+                img.alt = fullName;
+                img.decoding = 'async';
+                img.src = `/avatar/${user.chatID}?v=${Date.now()}`;
+                img.onerror = () => {
+                    img.remove();
+                    const fallback = document.createElement('div');
+                    fallback.className = 'avatar-initials';
+                    fallback.style.background = hashColor(user.chatID);
+                    fallback.textContent = initialsOf(user.firstName, user.lastName, user.username);
+                    previewAvatar.appendChild(fallback);
+                };
+                previewAvatar.appendChild(img);
+
+                userPreview.classList.add('active');
+            };
+
+            const hidePreview = () => {
+                userPreview.classList.remove('active');
+            };
+
+            const hashColor = (id) => {
+                let h = 0;
+                const s = String(id);
+                for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+                const hue = h % 360;
+                return `hsl(${hue} 70% 45%)`;
+            };
+
+            const initialsOf = (firstName, lastName, username) => {
+                const a = (firstName || '').trim()[0] || '';
+                const b = (lastName || '').trim()[0] || '';
+                const u = (username || '').trim()[0] || '';
+                const init = (a + b) || a || u || '?';
+                return init.toUpperCase();
+            };
+
+            const validateUser = async () => {
+                const userId = userIdInput.value.trim();
+                
+                if (!userId) {
+                    showError('Please enter a user ID');
+                    return;
+                }
+
+                // Validate that it's a number
+                if (!/^\d+$/.test(userId)) {
+                    showError('User ID must be a number');
+                    return;
+                }
+
+                // Check if user is already in recent list
+                const recentList = recentUsers.load();
+                if (recentList.some(u => String(u.chatID) === userId)) {
+                    showError('This user is already in your recent users list');
+                    return;
+                }
+
+                // Disable button and show loading state
+                validateBtn.disabled = true;
+                validateBtn.textContent = 'Validating...';
+                hideError();
+                hidePreview();
+
+                try {
+                    const currentChatID = {{.User.ChatID}};
+                    const response = await fetch(`/api/validate-user/${currentChatID}?userId=${userId}`);
+                    const data = await response.json();
+
+                    if (!response.ok) {
+                        showError(data.error || 'Failed to validate user');
+                        validateBtn.disabled = false;
+                        validateBtn.textContent = 'Validate';
+                        return;
+                    }
+
+                    // User validated successfully
+                    validatedUser = data;
+                    showPreview(data);
+                    validateBtn.style.display = 'none';
+                    confirmBtn.style.display = 'inline-block';
+                } catch (error) {
+                    console.error('Validation error:', error);
+                    showError('Network error. Please try again.');
+                } finally {
+                    validateBtn.disabled = false;
+                    validateBtn.textContent = 'Validate';
+                }
+            };
+
+            const confirmAddUser = () => {
+                if (!validatedUser) return;
+
+                // Add user to recent users
+                const list = recentUsers.load();
+                const now = Date.now();
+                
+                list.unshift({
+                    chatID: validatedUser.chatID,
+                    firstName: validatedUser.firstName || '',
+                    lastName: validatedUser.lastName || '',
+                    username: validatedUser.username || '',
+                    lastOpenedAt: now
+                });
+
+                // Keep max 12 users
+                if (list.length > 12) list.length = 12;
+                
+                recentUsers.save(list);
+                recentUsers.render();
+                close();
+            };
+
+            // Event listeners
+            cancelBtn.addEventListener('click', close);
+            confirmBtn.addEventListener('click', confirmAddUser);
+            validateBtn.addEventListener('click', validateUser);
+
+            // Close modal when clicking outside
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    close();
+                }
+            });
+
+            // Allow Enter key to validate/confirm
+            userIdInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    if (validateBtn.style.display !== 'none') {
+                        validateUser();
+                    }
+                }
+            });
+
+            // Allow Escape key to close
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' && modal.classList.contains('active')) {
+                    close();
+                }
+            });
+
+            return { open, close };
         })();
     </script>
+
+    <!-- Add User Modal -->
+    <div id="addUserModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Add User</h2>
+                <p class="modal-subtitle">Enter a user ID to add them to your recent users</p>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="userIdInput" class="form-label">User ID</label>
+                    <input 
+                        type="text" 
+                        id="userIdInput" 
+                        class="form-input" 
+                        placeholder="Enter user ID (e.g., 123456789)"
+                        autocomplete="off"
+                    />
+                </div>
+                <div id="userPreview" class="user-preview">
+                    <div class="user-preview-header">
+                        <div class="user-preview-avatar" id="previewAvatar">
+                            <!-- Avatar will be inserted here -->
+                        </div>
+                        <div class="user-preview-info">
+                            <div class="user-preview-name" id="previewName"></div>
+                            <div class="user-preview-username" id="previewUsername"></div>
+                        </div>
+                    </div>
+                    <div class="user-preview-id" id="previewId"></div>
+                </div>
+                <div id="modalError" class="modal-error"></div>
+            </div>
+            <div class="modal-footer">
+                <button id="modalCancelBtn" class="modal-button modal-button-secondary">Cancel</button>
+                <button id="modalValidateBtn" class="modal-button modal-button-primary">Validate</button>
+                <button id="modalConfirmBtn" class="modal-button modal-button-primary" style="display: none;">Add User</button>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
