@@ -2,6 +2,8 @@ package config
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"webBridgeBot/internal/logger"
 	"webBridgeBot/internal/reader"
 
@@ -39,27 +41,65 @@ type Configuration struct {
 
 // InitializeViper sets up Viper to read from environment variables and the .env file.
 // This function should be called early in main.
-func InitializeViper(log *logger.Logger) {
+func InitializeViper(log *logger.Logger, envFilePath string) {
 	viper.AutomaticEnv() // Read environment variables (e.g., from docker-compose)
 
-	// Explicitly set the config file name and type for .env
-	viper.SetConfigFile(".env")
-	viper.AddConfigPath(".") // Look for .env in the current directory
+	// Determine which .env file to use
+	envFile := findEnvFile(envFilePath, log)
 
-	if err := viper.ReadInConfig(); err != nil {
-		// Log a warning if .env not found. This is normal if config comes from env vars or flags.
-		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
-			log.Info(".env config file not found (this is expected if configuration is solely via environment variables or command-line flags).")
-		} else {
-			// Handle other errors like file not existing or permission issues
-			log.Infof("Could not read .env file: %v", err)
+	if envFile != "" {
+		viper.SetConfigFile(envFile)
+		if err := viper.ReadInConfig(); err != nil {
+			log.Infof("Could not read .env file at %s: %v", envFile, err)
 			log.Info("Hint: If you need to use a .env file, copy env.sample to .env and configure it.")
+			log.Info("Configuration will be loaded from environment variables and command-line flags.")
+		} else {
+			log.Infof("Successfully loaded configuration from .env file: %s", envFile)
 		}
-		log.Info("Configuration will be loaded from environment variables and command-line flags.")
 	} else {
-		log.Info("Successfully loaded configuration from .env file")
+		log.Info(".env config file not found (this is expected if configuration is solely via environment variables or command-line flags).")
+		log.Info("Configuration will be loaded from environment variables and command-line flags.")
 	}
 	// Note: `viper.BindPFlags` will be called in main.go after flags are defined.
+}
+
+// findEnvFile searches for .env file in multiple locations:
+// 1. Custom path specified by user (if provided)
+// 2. Executable's directory
+// 3. Current working directory
+// Returns the first found path or empty string if not found
+func findEnvFile(customPath string, log *logger.Logger) string {
+	// If custom path is provided, use it directly
+	if customPath != "" {
+		if _, err := os.Stat(customPath); err == nil {
+			return customPath
+		}
+		log.Warningf("Custom .env file not found at: %s", customPath)
+		return ""
+	}
+
+	// Try to find .env in multiple locations
+	searchPaths := []string{}
+
+	// 1. Executable's directory
+	if execPath, err := os.Executable(); err == nil {
+		execDir := filepath.Dir(execPath)
+		searchPaths = append(searchPaths, filepath.Join(execDir, ".env"))
+	}
+
+	// 2. Current working directory
+	if cwd, err := os.Getwd(); err == nil {
+		searchPaths = append(searchPaths, filepath.Join(cwd, ".env"))
+	}
+
+	// Search for .env file
+	for _, path := range searchPaths {
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
+	}
+
+	return ""
 }
 
 // LoadConfig loads configuration from Viper's resolved settings.

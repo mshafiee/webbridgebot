@@ -7,6 +7,8 @@ import (
 	"os"
 	"strings"
 	"sync"
+
+	"github.com/mattn/go-isatty"
 )
 
 // LogLevel represents the severity level of a log message
@@ -55,9 +57,19 @@ func New(output io.Writer, prefix string, level LogLevel, useColors bool) *Logge
 	}
 }
 
-// NewDefault creates a logger with default settings (INFO level, with colors)
+// NewDefault creates a logger with default settings (INFO level, with automatic TTY detection for colors)
 func NewDefault(prefix string) *Logger {
-	return New(os.Stdout, prefix, INFO, true)
+	// Automatically detect if stdout is a terminal and enable colors only if it is
+	useColors := isTerminal(os.Stdout)
+	return New(os.Stdout, prefix, INFO, useColors)
+}
+
+// isTerminal checks if the given file is a terminal
+func isTerminal(f *os.File) bool {
+	if f == nil {
+		return false
+	}
+	return isatty.IsTerminal(f.Fd()) || isatty.IsCygwinTerminal(f.Fd())
 }
 
 // SetLevel changes the minimum log level
@@ -180,4 +192,3 @@ func (l *Logger) Printf(format string, v ...interface{}) {
 func (l *Logger) Println(v ...interface{}) {
 	l.logf(INFO, "%s", fmt.Sprint(v...))
 }
-

@@ -17,17 +17,20 @@ import (
 // cfg is declared at the package level to allow Cobra to bind flags directly to its fields.
 var cfg config.Configuration
 
+// envFilePath stores the custom .env file path if provided
+var envFilePath string
+
 func main() {
 	// Create an initial logger for startup (will be reconfigured after config loads)
 	log := logger.NewDefault("webBridgeBot: ")
-
-	// 1. Initialize Viper: Read from environment variables and .env file.
-	config.InitializeViper(log)
 
 	rootCmd := &cobra.Command{
 		Use:   "webBridgeBot",
 		Short: "WebBridgeBot",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			// 1. Initialize Viper: Read from environment variables and .env file.
+			// This is called after flags are parsed, so envFilePath is now available.
+			config.InitializeViper(log, envFilePath)
 			return viper.BindPFlags(cmd.Flags())
 		},
 		Run: func(cmd *cobra.Command, args []string) {
@@ -72,6 +75,7 @@ func main() {
 	}
 
 	// 4. Define Cobra flags:
+	rootCmd.Flags().StringVar(&envFilePath, "env_file", "", "Path to .env file (default: searches in executable directory and current directory)")
 	rootCmd.Flags().IntVar(&cfg.ApiID, "api_id", 0, "Telegram API ID (required)")
 	rootCmd.Flags().StringVar(&cfg.ApiHash, "api_hash", "", "Telegram API Hash (required)")
 	rootCmd.Flags().StringVar(&cfg.BotToken, "bot_token", "", "Telegram Bot Token (required)")
