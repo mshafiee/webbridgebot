@@ -144,13 +144,13 @@ func setDefaultValues(cfg *Configuration) {
 			cfg.LogLevel = "INFO"
 		}
 	}
-	
+
 	// Connection and retry defaults
 	if cfg.RequestTimeout == 0 {
 		cfg.RequestTimeout = 300 // 5 minutes default timeout
 	}
 	if cfg.MaxRetries == 0 {
-		cfg.MaxRetries = 5 // 5 retry attempts by default
+		cfg.MaxRetries = 10 // 10 retry attempts by default (increased for better resilience)
 	}
 	if cfg.RetryBaseDelay == 0 {
 		cfg.RetryBaseDelay = 1 // 1 second base delay

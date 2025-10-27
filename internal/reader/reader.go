@@ -49,9 +49,9 @@ type circuitBreakerState struct {
 }
 
 const (
-	circuitBreakerThreshold = 3               // Number of consecutive failures before opening circuit
-	circuitBreakerTimeout   = 5 * time.Minute // How long to block retries after circuit opens
-	circuitBreakerReset     = 1 * time.Minute // Reset failure count after this period of no failures
+	circuitBreakerThreshold = 3                // Number of consecutive failures before opening circuit
+	circuitBreakerTimeout   = 1 * time.Minute  // How long to block retries after circuit opens (reduced for faster recovery)
+	circuitBreakerReset     = 30 * time.Second // Reset failure count after this period of no failures
 )
 
 // telegramClient defines the interface for the parts of the Telegram client that we use.
@@ -233,22 +233,26 @@ func (r *telegramReader) downloadAndCacheChunk(req *tg.UploadGetFileRequest, cac
 				cacheChunkID, locationID, req.Offset, req.Limit, req.Location)
 		}
 
-		res, err := r.client.API().UploadGetFile(r.ctx, req)
+		// Add timeout to prevent hanging on slow API calls
+		timeoutCtx, cancel := context.WithTimeout(r.ctx, 30*time.Second)
+		res, err := r.client.API().UploadGetFile(timeoutCtx, req)
+		cancel() // Release resources immediately after call
+
 		if err != nil {
 			if floodWait, ok := isFloodWaitError(err); ok {
-				r.log.Printf("FLOOD_WAIT error: retrying in %d seconds.", floodWait)
+				r.log.Printf("FLOOD_WAIT error: retrying in %d seconds (attempt %d/%d)", floodWait, retryCount+1, r.maxRetries)
 				time.Sleep(time.Duration(floodWait) * time.Second)
 				continue
 			}
 
 			if isTransientError(err) {
-				r.log.Printf("Transient error: %v, retrying in %v", err, delay)
+				r.log.Printf("Transient error: %v, retrying in %v (attempt %d/%d)", err, delay, retryCount+1, r.maxRetries)
 				time.Sleep(delay)
 				delay = minDuration(delay*2, r.maxDelay)
 				continue
 			}
 
-			r.log.Printf("Error during chunk download: %v", err)
+			r.log.Printf("Error during chunk download: %v (attempt %d/%d)", err, retryCount+1, r.maxRetries)
 			// Record failure for circuit breaker
 			recordChunkFailure(chunkKey, r.log)
 			return nil, err
@@ -304,8 +308,13 @@ func (r *telegramReader) partStream() func() ([]byte, error) {
 
 		chunkData, err := r.chunk(currentAPIOffset, limitToRequest)
 		if err != nil {
-			r.log.Printf("Error fetching chunk from Telegram API for offset %d, limit %d: %v", currentAPIOffset, limitToRequest, err)
-			return nil, err
+			r.log.Warningf("Failed to fetch chunk at offset %d (limit %d): %v - returning empty data to maintain stream continuity", currentAPIOffset, limitToRequest, err)
+
+			// Return empty chunk instead of error - causes brief glitch but playback continues
+			// This is the key to resilient video playback
+			emptyChunk := make([]byte, limitToRequest)
+			currentAPIOffset += r.chunkSize
+			return emptyChunk, nil
 		}
 
 		// If we get an empty chunk but expected more, it's an issue.

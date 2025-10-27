@@ -418,7 +418,6 @@ func (bc *BinaryCache) processSaves() {
 			if timer != nil {
 				timer.Stop()
 			}
-			fmt.Println("Shutting down cache... performing final metadata save.")
 			bc.saveMetadataInternal()
 			return
 		case <-func() <-chan time.Time {
@@ -428,7 +427,6 @@ func (bc *BinaryCache) processSaves() {
 			return timer.C
 		}():
 			// The timer fired, so it's time to save.
-			fmt.Println("Debounce timer fired, saving metadata...")
 			bc.saveMetadataInternal()
 			timer = nil // Mark timer as inactive
 		}
