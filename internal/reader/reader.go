@@ -191,15 +191,22 @@ func (r *telegramReader) chunk(offset int64, limit int64) ([]byte, error) {
 	// Attempt to read the entire logical chunk from cache first.
 	cachedLogicalChunk, err := r.cache.readChunk(locationID, cacheChunkID)
 	if err == nil {
-		if r.debugMode {
-			r.log.Debugf("Cache hit for logical chunk %d (location %d).", cacheChunkID, locationID)
+		// Validate cached chunk - if it's empty or corrupted, treat as cache miss and re-download
+		if len(cachedLogicalChunk) == 0 {
+			r.log.Printf("Cache corruption detected: empty chunk for chunk %d (location %d), re-downloading", cacheChunkID, locationID)
+		} else if isLikelyCorrupted(cachedLogicalChunk) {
+			r.log.Printf("Cache corruption suspected: chunk %d (location %d) appears to contain only zeros, re-downloading", cacheChunkID, locationID)
+		} else {
+			if r.debugMode {
+				r.log.Debugf("Cache hit for logical chunk %d (location %d).", cacheChunkID, locationID)
+			}
+			// If cached data is found and valid, ensure we return only up to the requested `limit`.
+			if int64(len(cachedLogicalChunk)) >= limit {
+				return cachedLogicalChunk[:limit], nil
+			}
+			// If cached data is smaller than the requested limit, it means it's the last chunk.
+			return cachedLogicalChunk, nil
 		}
-		// If cached data is found, ensure we return only up to the requested `limit`.
-		if int64(len(cachedLogicalChunk)) >= limit {
-			return cachedLogicalChunk[:limit], nil
-		}
-		// If cached data is smaller than the requested limit, it means it's the last chunk.
-		return cachedLogicalChunk, nil
 	}
 
 	if r.debugMode {
@@ -297,6 +304,13 @@ func (r *telegramReader) downloadAndCacheChunk(req *tg.UploadGetFileRequest, cac
 		switch result := res.(type) {
 		case *tg.UploadFile:
 			chunkData := result.Bytes
+
+			// Validate chunk data before caching - don't cache empty or suspiciously small chunks
+			if len(chunkData) == 0 {
+				r.log.Printf("Received empty chunk from Telegram API for chunk %d (location %d), not caching", cacheChunkID, locationID)
+				return nil, fmt.Errorf("received empty chunk from Telegram API")
+			}
+
 			// Record success for circuit breaker
 			recordChunkSuccess(chunkKey)
 
@@ -319,6 +333,7 @@ func (r *telegramReader) downloadAndCacheChunk(req *tg.UploadGetFileRequest, cac
 
 			// Write the downloaded chunk to cache. The cache implementation handles
 			// data that is smaller than its internal fixed chunk size.
+			// Only cache valid, non-empty chunks to prevent corrupted cache entries
 			err = r.cache.writeChunk(locationID, cacheChunkID, chunkData)
 			if err != nil {
 				r.log.Printf("Error writing chunk to cache (location %d, chunk %d): %v", locationID, cacheChunkID, err)
@@ -360,13 +375,10 @@ func (r *telegramReader) partStream() func() ([]byte, error) {
 
 		chunkData, err := r.chunk(currentAPIOffset, limitToRequest)
 		if err != nil {
-			r.log.Warningf("Failed to fetch chunk at offset %d (limit %d): %v - returning empty data to maintain stream continuity", currentAPIOffset, limitToRequest, err)
-
-			// Return empty chunk instead of error - causes brief glitch but playback continues
-			// This is the key to resilient video playback
-			emptyChunk := make([]byte, limitToRequest)
-			currentAPIOffset += r.chunkSize
-			return emptyChunk, nil
+			r.log.Printf("Failed to fetch chunk at offset %d (limit %d): %v - this will cause a stream error", currentAPIOffset, limitToRequest, err)
+			// Return the actual error instead of empty chunk to prevent caching corrupted data
+			// The player will handle this more gracefully than playing zeros
+			return nil, fmt.Errorf("chunk download failed at offset %d: %w", currentAPIOffset, err)
 		}
 
 		// If we get an empty chunk but expected more, it's an issue.
@@ -517,4 +529,28 @@ func recordChunkSuccess(chunkKey string) {
 		state.consecutiveFails = 0
 		// Keep the total failure count for statistics, but reset consecutive failures
 	}
+}
+
+// isLikelyCorrupted checks if a chunk appears to be corrupted (e.g., all zeros)
+// This helps detect chunks that were created from failed downloads
+func isLikelyCorrupted(data []byte) bool {
+	if len(data) == 0 {
+		return true
+	}
+
+	// Sample the chunk - check if it's mostly zeros (>95%)
+	// We don't check every byte for performance reasons
+	sampleSize := minInt64(int64(len(data)), 1024) // Check first 1KB
+	zeroCount := 0
+
+	for i := int64(0); i < sampleSize; i++ {
+		if data[i] == 0 {
+			zeroCount++
+		}
+	}
+
+	// If more than 95% of sampled bytes are zero, likely corrupted
+	// (Valid media files will have varied byte patterns)
+	threshold := float64(sampleSize) * 0.95
+	return float64(zeroCount) > threshold
 }

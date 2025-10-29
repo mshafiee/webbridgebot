@@ -1435,6 +1435,10 @@
             let audioMotionInstance = null;
             let statusTimeout = null;
             let isSeeking = false;
+            let stallDetectionTimer = null;
+            let lastPlaybackTime = 0;
+            let stallRetryCount = 0;
+            const MAX_STALL_RETRIES = 3;
 
             const setupWebSocket = () => {
                 const wsAddress = `ws://${window.location.host}/ws/{{.User.ChatID}}`;
@@ -1534,6 +1538,14 @@
             };
 
             const hideAllMediaPlayers = () => {
+                // Clear stall detection timer
+                if (stallDetectionTimer) {
+                    clearInterval(stallDetectionTimer);
+                    stallDetectionTimer = null;
+                }
+                stallRetryCount = 0;
+                lastPlaybackTime = 0;
+                
                 // Stop video playback
                 if (!dom.videoPlayer.paused) {
                     dom.videoPlayer.pause();
@@ -1687,6 +1699,17 @@
                 };
                 player.addEventListener('error', handleError, { once: true });
                 
+                // Add stalled event listener for additional detection
+                player.addEventListener('stalled', () => {
+                    console.warn('Browser detected stalled playback');
+                    updateStatus('Buffering...', 'info', 3000);
+                });
+                
+                // Add waiting event listener
+                player.addEventListener('waiting', () => {
+                    console.log('Player is waiting for data...');
+                });
+                
                 // Set source and load
                 player.src = url;
                 player.load();
@@ -1708,6 +1731,8 @@
                         player.play().then(() => {
                             updateStatus('Media playing.', 'success', 2000);
                             player.focus();
+                            // Setup stall detection for video and audio
+                            setupStallDetection(player);
                         }).catch(error => {
                             if (error.name === 'NotAllowedError') {
                                 updateStatus('Click to play media (Autoplay blocked).', 'info', 0);
@@ -1950,6 +1975,64 @@
                 if (audioMotionInstance) {
                     audioMotionInstance.setCanvasSize(window.innerWidth, window.innerHeight);
                 }
+            };
+
+            // Stall detection and recovery for video/audio playback
+            const setupStallDetection = (player) => {
+                // Clear any existing timer
+                if (stallDetectionTimer) {
+                    clearInterval(stallDetectionTimer);
+                }
+                
+                stallRetryCount = 0;
+                lastPlaybackTime = 0;
+                
+                // Check every 2 seconds if playback has stalled
+                stallDetectionTimer = setInterval(() => {
+                    // Only check if player is supposed to be playing
+                    if (player.paused || player.ended || isSeeking) {
+                        return;
+                    }
+                    
+                    const currentTime = player.currentTime;
+                    
+                    // If playback hasn't progressed, it's stalled
+                    if (currentTime === lastPlaybackTime && currentTime < player.duration - 1) {
+                        console.warn(`Playback stalled at ${currentTime.toFixed(2)}s, attempting recovery...`);
+                        handleStall(player, currentTime);
+                    } else {
+                        // Playback is progressing, reset retry count
+                        stallRetryCount = 0;
+                    }
+                    
+                    lastPlaybackTime = currentTime;
+                }, 2000);
+            };
+
+            const handleStall = (player, stalledTime) => {
+                stallRetryCount++;
+                
+                if (stallRetryCount > MAX_STALL_RETRIES) {
+                    updateStatus(`Playback stalled at ${stalledTime.toFixed(0)}s. Please seek to a different position.`, 'error', 0);
+                    console.error('Max stall recovery attempts reached');
+                    return;
+                }
+                
+                updateStatus(`Recovering from stall (attempt ${stallRetryCount}/${MAX_STALL_RETRIES})...`, 'info', 3000);
+                
+                // Try to recover by seeking slightly forward
+                const recoveryOffset = 0.5; // Seek forward 0.5 seconds
+                const newTime = Math.min(stalledTime + recoveryOffset, player.duration - 1);
+                
+                console.log(`Stall recovery attempt ${stallRetryCount}: seeking from ${stalledTime.toFixed(2)}s to ${newTime.toFixed(2)}s`);
+                
+                player.currentTime = newTime;
+                
+                // Try to resume playback
+                player.play().catch(err => {
+                    console.error('Failed to resume playback after stall:', err);
+                    updateStatus('Playback error. Try reloading or seeking.', 'error', 5000);
+                });
             };
 
             const handleControlCommand = (command, value) => {

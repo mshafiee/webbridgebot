@@ -596,3 +596,86 @@ func (bc *BinaryCache) initializeFile() error {
 	heap.Init(bc.lruQueue)
 	return bc.metadataFile.Sync()
 }
+
+// ClearLocationCache removes all cached chunks for a specific location ID
+// This is useful for clearing corrupted cache entries for a specific file
+func (bc *BinaryCache) ClearLocationCache(locationID int64) {
+	bc.chunkLock.Lock()
+	defer bc.chunkLock.Unlock()
+
+	locationChunks, exists := bc.metadata[locationID]
+	if !exists {
+		return
+	}
+
+	// Remove all chunks for this location and add offsets to eviction list
+	for chunkID, metas := range locationChunks {
+		for _, meta := range metas {
+			bc.evictionList = append(bc.evictionList, meta.Offset)
+			bc.cacheSize -= bc.fixedChunkSize
+		}
+
+		// Remove from LRU
+		key := lruKey(locationID, chunkID)
+		if item, ok := bc.lruMap[key]; ok {
+			if item.index != -1 {
+				heap.Remove(bc.lruQueue, item.index)
+			}
+			delete(bc.lruMap, key)
+		}
+	}
+
+	// Remove the entire location from metadata
+	delete(bc.metadata, locationID)
+
+	// Request a metadata save
+	bc.requestSave()
+}
+
+// ClearAllCache clears the entire cache
+// This is useful for cleaning up all corrupted cache entries
+func (bc *BinaryCache) ClearAllCache() error {
+	bc.chunkLock.Lock()
+	defer bc.chunkLock.Unlock()
+
+	// Reset all cache state
+	bc.metadata = make(map[int64]map[int64][]chunkMetadata)
+	bc.cacheSize = 0
+	bc.evictionList = []int64{}
+	bc.lruQueue = &PriorityQueue{}
+	bc.lruMap = make(map[string]*LRUItem)
+	heap.Init(bc.lruQueue)
+
+	// Truncate the cache file
+	if err := bc.cashFile.Truncate(0); err != nil {
+		return fmt.Errorf("failed to truncate cache file: %w", err)
+	}
+
+	// Save the cleared metadata
+	bc.requestSave()
+	return nil
+}
+
+// GetCacheStats returns statistics about the cache
+func (bc *BinaryCache) GetCacheStats() map[string]interface{} {
+	bc.chunkLock.Lock()
+	defer bc.chunkLock.Unlock()
+
+	totalChunks := 0
+	locationCount := len(bc.metadata)
+
+	for _, locationChunks := range bc.metadata {
+		totalChunks += len(locationChunks)
+	}
+
+	return map[string]interface{}{
+		"total_chunks":      totalChunks,
+		"total_locations":   locationCount,
+		"cache_size_bytes":  bc.cacheSize,
+		"cache_size_mb":     float64(bc.cacheSize) / (1024 * 1024),
+		"max_cache_size_mb": float64(bc.maxCacheSize) / (1024 * 1024),
+		"utilization":       float64(bc.cacheSize) / float64(bc.maxCacheSize) * 100,
+		"lru_queue_size":    bc.lruQueue.Len(),
+		"eviction_list_len": len(bc.evictionList),
+	}
+}
