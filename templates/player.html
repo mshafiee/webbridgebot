@@ -1441,7 +1441,7 @@
             const MAX_STALL_RETRIES = 3;
 
             const setupWebSocket = () => {
-                const wsAddress = `ws://${window.location.host}/ws/{{.User.ChatID}}`;
+                const wsAddress = `${location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/ws/{{.User.ChatID}}`;
                 ws = new WebSocket(wsAddress);
 
                 ws.addEventListener('message', handleWebSocketMessage);
