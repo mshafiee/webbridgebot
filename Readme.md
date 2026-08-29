@@ -1,6 +1,20 @@
-# WebBridgeBot
+<p align="center">
+  <img src="assets/hero-banner.svg" alt="WebBridgeBot — stream Telegram media in your browser" width="100%">
+</p>
 
-WebBridgeBot is a Telegram bot that acts as a bridge between Telegram and your web browser. It allows you to forward any video, audio, or photo file to the bot and instantly receive a private link. This link opens a web-based media player that streams the content directly from the bot, enabling seamless playback on devices like TVs, game consoles, or any modern web browser.
+<p align="center">
+  <a href="https://golang.org/"><img src="https://img.shields.io/badge/Go-1.21%2B-00ADD8?logo=go&logoColor=white" alt="Go"></a>
+  <a href="https://www.docker.com/"><img src="https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white" alt="Docker"></a>
+  <img src="https://img.shields.io/badge/Telegram-Bot-229ED9?logo=telegram&logoColor=white" alt="Telegram Bot">
+  <img src="https://img.shields.io/badge/WebSocket-Real--Time-8f6fd4" alt="WebSocket">
+  <img src="https://img.shields.io/badge/SQLite-Storage-003B57?logo=sqlite&logoColor=white" alt="SQLite">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-A9318F" alt="GPL-3.0 License"></a>
+</p>
+
+<p align="center">
+  Forward any video, audio, or photo to a Telegram bot — get back a private, unguessable link<br>
+  that streams it in a beautiful web player on <b>any device</b>: TVs, game consoles, phones, browsers.
+</p>
 
 <p align="center">
   <img src="assets/web-player-screenshot.png" alt="WebBridgeBot Web Player Interface" width="800">
@@ -8,96 +22,60 @@ WebBridgeBot is a Telegram bot that acts as a bridge between Telegram and your w
 
 ---
 
-### ✨ Features
+## 📖 Table of Contents
+
+- [How It Works](#-how-it-works) · [Features](#-features) · [Quick Start](#-quick-start) · [Environment Variables](#%EF%B8%8F-environment-variables) · [Admin & Access Control](#-admin--access-control) · [Debug & Troubleshooting](#-debug--troubleshooting) · [نسخه فارسی](#نسخه-فارسی)
+
+---
+
+## 🔀 How It Works
+
+<p align="center">
+  <img src="assets/how-it-works.svg" alt="Forward media to the bot, get a secure link, open the web player, stream over WebSocket" width="100%">
+</p>
+
+1. **Send Media** — forward or upload a video, audio, or photo to the bot in a private chat.
+2. **Generate Link** — the bot processes the file, generates a unique hash-based URL, and replies with an inline control panel.
+3. **Open Player** — open the URL in any browser. The page connects back to the bot over WebSocket.
+4. **Play Media** — media metadata arrives via WebSocket, then the file streams directly from the bot's server with full seeking support.
+
+---
+
+## ✨ Features
 
 #### 🎬 Media & Streaming
-- **Universal Media Support:** Stream videos, audio files, and photos directly from Telegram to any web browser
-- **Forward Any Media:** Forward media files from any chat or channel directly to the bot for instant streaming
-- **HTTP Range Requests:** Full support for partial content streaming, enabling smooth seeking in videos and audio
-- **Intelligent Binary Cache:** LRU-based disk caching system that stores frequently accessed file chunks for instant replay
-- **Audio Visualization:** Beautiful real-time audio spectrum analyzer using AudioMotion for an immersive listening experience
-- **High-Quality Playback:** Native HTML5 media players with full browser controls and keyboard shortcuts
+
+- **Universal media support** — stream videos, audio, and photos from any chat or channel
+- **HTTP Range requests** — smooth seeking in videos and audio
+- **Intelligent binary cache** — LRU disk cache for frequently accessed chunks and instant replay
+- **Audio visualization** — real-time spectrum analyzer (AudioMotion) for an immersive experience
 
 #### ⚡ Real-Time Communication
-- **WebSocket Integration:** Instant bidirectional communication between Telegram bot and web player
-- **Remote Control:** Control playback directly from Telegram using inline buttons (play/pause, seek ±10s, restart, fullscreen)
-- **Live Status Updates:** Real-time connection status and playback state notifications
-- **Instant Media Loading:** Media appears in the web player immediately when sent to the bot
+
+- **WebSocket integration** — instant bidirectional link between bot and web player
+- **Remote control** — play/pause, seek ±10s, restart, and fullscreen from Telegram's inline buttons
+- **Live status updates** — connection state and playback status in real time
 
 #### 🔒 Security & Access Control
-- **Robust Authorization System:** First user automatically becomes admin with full control privileges
-- **Granular Permissions:** Admins can authorize users, grant admin rights, or revoke access at any time
-- **Secure URL Generation:** Hash-based authentication ensures media URLs cannot be guessed or shared
-- **Session Persistence:** SQLite-based secure session storage with graceful shutdown handling
 
-#### 👨‍💼 Admin Features
-- **User Management Commands:** `/authorize`, `/deauthorize`, `/listusers`, `/userinfo`
-- **Admin Notifications:** Automatic alerts when new users request access with one-click authorization buttons
-- **Media Surveillance:** Optional forwarding of all media to a private log channel with user attribution
-- **Paginated User Lists:** Efficiently browse through all users with detailed status information
+- **Hash-based secure URLs** — media links cannot be guessed or shared
+- **Robust authorization** — the first user becomes admin; everyone else must be approved
+- **Session persistence** — SQLite-backed sessions with graceful shutdown handling
 
 #### 🎨 Modern Web Interface
-- **Gorgeous Dark Theme:** Glassmorphism design with gradient accents and smooth animations
-- **Fully Responsive:** Works flawlessly on desktops, tablets, smartphones, smart TVs, and game consoles
-- **Profile Avatars:** Display user profile photos fetched directly from Telegram
-- **Recent Users Bar:** Quick-switch between multiple user sessions with localStorage-based history
-- **Accessibility:** Full keyboard navigation, ARIA labels, and reduced motion support
 
-#### 🚀 Performance & Reliability
-- **Asynchronous Operations:** Background metadata saving with debouncing to minimize disk I/O
-- **Efficient Memory Usage:** Fixed-size chunk architecture with LRU eviction for optimal cache management
-- **Graceful Error Handling:** Comprehensive error recovery with user-friendly status messages
-- **Docker Ready:** Full containerization support with Docker Compose for easy deployment
-- **Cross-Platform:** Written in Go for excellent performance across all operating systems
+- **Gorgeous dark theme** — glassmorphism design with gradient accents and smooth animations
+- **Fully responsive** — desktops, tablets, smartphones, smart TVs, and game consoles
+- **Profile avatars & recent-users bar** — Telegram profile photos and quick session switching
+- **Accessible** — keyboard navigation, ARIA labels, and reduced-motion support
 
-### 🛠️ Technologies
+---
 
-- **Backend:** Go 1.21+ with Gorilla Mux for routing and WebSockets
-- **Telegram API:** gotgproto (TDLib wrapper) for full MTProto support
-- **Database:** SQLite for user management and session storage
-- **Caching:** Custom binary cache with LRU eviction and asynchronous persistence
-- **Frontend:** Vanilla JavaScript with HTML5 media APIs and CSS3 animations
-- **Audio Visualization:** AudioMotion Analyzer for real-time spectrum display
-- **Configuration:** Viper + Cobra for flexible config management (env, flags, files)
-- **Containerization:** Docker & Docker Compose for simplified deployment
+## 🚀 Quick Start
 
-### ⚙️ How It Works
+> **Prerequisites:** Docker & Docker Compose · Telegram `API ID` + `API Hash` from [my.telegram.org](https://my.telegram.org/) · a Bot Token from [@BotFather](https://t.me/BotFather)
 
-1.  **Send Media:** You forward or upload a media file (video, audio, photo) to the bot in a private chat.
-2.  **Generate Link:** The bot processes the file, generates a unique, secure URL, and sends it back to you with a control panel.
-3.  **Open Player:** You open the URL in any browser. The web page establishes a WebSocket connection back to the bot.
-4.  **Play Media:** The bot sends media information (like filename and type) to the player via WebSocket. The player then starts streaming the file content directly from the bot's server.
-
-### 📋 Prerequisites
-
-- **Docker & Docker Compose:** Required for the recommended containerized deployment.
-- **Go (1.21+):** Needed only if you plan to build the application from source manually.
-- **Telegram API Credentials:**
-    - `API ID` and `API Hash`: Obtain these from [my.telegram.org](https://my.telegram.org/).
-    - `Bot Token`: Create a bot and get the token from [@BotFather](https://t.me/BotFather) on Telegram.
-- **(Optional) A Telegram Channel for Logging:** If you want to use the surveillance feature, create a private or public channel where the bot will forward all media. The bot must be added to the channel as an administrator with permission to post messages.
-
-### 🔑 User & Admin Management
-
-The bot includes a secure authentication system to control access.
-
--   **First Admin:** The very first user to interact with the bot (by sending `/start`) is automatically granted admin privileges.
--   **Admin Powers:** Admins receive notifications for new users and can manage access with the following commands.
--   **Authorization:** All subsequent users must be manually authorized by an admin before they can use the bot. Unauthorized users will be prompted to request access.
-
-#### Admin Commands
-
--   `/authorize <user_id>`: Authorizes a user to use the bot.
--   `/authorize <user_id> admin`: Authorizes a user and grants them admin privileges.
--   `/deauthorize <user_id>`: Revokes a user's access to the bot.
--   `/listusers`: Displays a paginated list of all users and their status.
--   `/userinfo <user_id>`: Shows detailed information for a specific user.
-
-### 🚀 Setup & Deployment (Recommended)
-
-Using Docker Compose is the easiest way to run WebBridgeBot.
-
-**1. Clone the Repository**
+**1. Clone the repository**
 
 ```bash
 git clone https://github.com/mshafiee/webbridgebot.git
@@ -106,8 +84,6 @@ cd webbridgebot
 
 **2. Create a `.env` file**
 
-Create a file named `.env` in the project's root directory and paste the following content. Replace the placeholder values with your actual credentials.
-
 ```plaintext
 # .env - Telegram API Configuration
 API_ID=1234567
@@ -115,110 +91,111 @@ API_HASH=a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4
 BOT_TOKEN=1234567890:ABC-DEF1234ghIkl-zyx57W2v1u123ew11
 
 # Web Server and URL Configuration
-# Replace localhost with your server's IP or domain name if it's publicly accessible
+# Replace localhost with your server's IP or domain name if publicly accessible
 BASE_URL=http://localhost:8080
 PORT=8080
 
 # (Optional) Cache Configuration
 HASH_LENGTH=8
-MAX_CACHE_SIZE=10737418240 # 10 GB in bytes
-CACHE_DIRECTORY=.cache
+MAX_CACHE_SIZE=10737418240
 
-# (Optional) Admin Surveillance Channel
-# The ID of the channel where all media will be forwarded. The bot MUST be an admin in this channel.
-# For public channels, it's @channel_username. For private channels, it's usually a large negative number.
-# You can find the ID by forwarding a message from the channel to a bot like @userinfobot.
-# Example: LOG_CHANNEL_ID=-1001234567890
+# (Optional) Surveillance Channel — see Environment Variables below
 LOG_CHANNEL_ID=0
 ```
 
 **3. Run with Docker Compose**
 
-Start the bot in the background:
-
 ```bash
 docker-compose up -d
 ```
 
--   **View logs:** `docker-compose logs -f`
--   **Stop the bot:** `docker-compose down`
+| | |
+|---|---|
+| 📜 **View logs** | `docker-compose logs -f` |
+| 🛑 **Stop the bot** | `docker-compose down` |
 
-### 🔧 Environment Variables
+> 💡 Prefer building from source? You'll need Go 1.21+ — see the `Makefile` for build targets.
 
-These variables can be set in the `.env` file or directly in your environment.
+<p align="center"><img src="assets/divider.svg" width="80%" alt=""></p>
+---
 
-| Variable          | Description                                                    | Default           | Required |
-| ----------------- | -------------------------------------------------------------- | ----------------- | -------- |
-| `API_ID`          | Your Telegram API ID.                                          | -                 | **Yes**  |
-| `API_HASH`        | Your Telegram API Hash.                                        | -                 | **Yes**  |
-| `BOT_TOKEN`       | The token for your Telegram bot.                               | -                 | **Yes**  |
-| `BASE_URL`        | The public URL where the bot's web player will be hosted.      | `http://localhost:8080` | **Yes**  |
-| `PORT`            | The port on which the web server will run.                     | `8080`            | No       |
-| `HASH_LENGTH`     | The length of the short hash used in media URLs.               | `8`               | No       |
-| `MAX_CACHE_SIZE`  | Maximum size for the disk cache in bytes.                      | `10737418240` (10GB) | No       |
-| `CACHE_DIRECTORY` | The directory to store cached media chunks and the database.   | `.cache`          | No       |
-| `DEBUG_MODE`      | Set to `true` to enable verbose logging.                       | `false`           | No       |
-| `LOG_CHANNEL_ID`  | Optional ID of a channel to forward all media for logging. The bot must be an admin there. | `0` (disabled)      | No       |
+## ⚙️ Environment Variables
 
-### 🤝 Contributing
+| Variable | Description | Default | Required |
+|---|---|---|---|
+| `API_ID` | Your Telegram API ID from [my.telegram.org](https://my.telegram.org/) | — | **Yes** |
+| `API_HASH` | Your Telegram API Hash | — | **Yes** |
+| `BOT_TOKEN` | Your Telegram bot token from [@BotFather](https://t.me/BotFather) | — | **Yes** |
+| `BASE_URL` | Public URL where the bot's web player is hosted | `http://localhost:8080` | **Yes** |
+| `PORT` | Port the web server runs on | `8080` | No |
+| `HASH_LENGTH` | Length of the short hash used in media URLs | `8` | No |
+| `MAX_CACHE_SIZE` | Maximum disk cache size in bytes | `10737418240` (10 GB) | No |
+| `CACHE_DIRECTORY` | Directory for cached media chunks and the database | `.cache` | No |
+| `DEBUG_MODE` | Set to `true` to enable verbose logging | `false` | No |
+| `LOG_CHANNEL_ID` | Optional channel to forward all media for auditing. The bot must be an admin there. For public channels use `@channel_username`; for private channels use the numeric ID (e.g. `-1001234567890`, findable via [@userinfobot](https://t.me/userinfobot)) | `0` (disabled) | No |
 
-We welcome contributions! Please feel free to fork the repository, create a feature branch, and submit a pull request. Check the issues tab for ideas on how to help.
+---
 
-### 📄 License
+## 🔑 Admin & Access Control
 
-WebBridgeBot is licensed under the **GNU General Public License v3.0**. See the `LICENSE` file for more details.
+The first user to send `/start` automatically becomes an **admin**. All other users must be approved before they can use the bot — unauthorized users are prompted to request access, and admins receive a notification with one-click approval buttons.
 
-### 🐛 Debug Mode
+| Command | Action |
+|---|---|
+| `/authorize <user_id>` | Authorize a user |
+| `/authorize <user_id> admin` | Authorize a user and grant admin rights |
+| `/deauthorize <user_id>` | Revoke a user's access |
+| `/listusers` | Paginated list of all users and their status |
+| `/userinfo <user_id>` | Detailed information for a specific user |
 
-WebBridgeBot includes a comprehensive debug logging system to help troubleshoot issues with forwarded messages and media streaming.
+> 🎥 **Media surveillance (optional):** set `LOG_CHANNEL_ID` to forward all media to a private log channel with user attribution.
 
-**Enable Debug Mode:**
+---
 
-Set `DEBUG_MODE=true` in your `.env` file or environment variables:
+## 🐛 Debug & Troubleshooting
 
-```plaintext
-DEBUG_MODE=true
-```
-
-**Debug Logs Include:**
-
-- **Received Messages:** Complete logging of all incoming messages with sender info, text preview, media type, and forwarded status
-- **Command Reception:** Logs for all commands (/start, /authorize, /deauthorize, /listusers, /userinfo)
-- **Forwarded Message Detection:** Details about forwarded messages (original sender, date)
-- **Media Processing:** File extraction, size, mime type, dimensions, and duration
-- **Authorization Checks:** User database lookups and permission verification
-- **File URL Generation:** Hash creation and validation
-- **WebSocket Connections:** Connection attempts, authorization, and message publishing
-- **HTTP Streaming:** Range requests, file fetching, and hash verification
-- **Log Channel Forwarding:** Message forwarding to surveillance channels
-- **Callback Queries:** Button clicks and inline keyboard interactions
-
-**View Debug Logs:**
+Set `DEBUG_MODE=true` in your `.env` to enable verbose logging, then view it:
 
 ```bash
-# Docker Compose
+# With Docker Compose
 docker-compose logs -f | grep DEBUG
 
 # Direct execution
 ./webbridgebot | grep DEBUG
 ```
 
-### 🛠️ Troubleshooting
+Debug logs include received messages, forwarded-message detection, media processing (file, size, MIME, duration), permission checks, file URL generation, WebSocket connections, HTTP streaming, log-channel forwarding, and callback queries.
 
--   **Check Environment Variables:** Ensure all required variables (`API_ID`, `API_HASH`, `BOT_TOKEN`, `BASE_URL`) are correctly set in your `.env` file.
--   **Review Logs:** Use `docker-compose logs -f` to check for any errors during startup or operation.
--   **Enable Debug Mode:** Set `DEBUG_MODE=true` to get detailed logging for all operations, especially useful for diagnosing forwarded message issues.
--   **Permissions:** Make sure the `.cache` directory has the correct write permissions for the Docker container. Docker Compose handles this with volumes, but it's a common issue in other setups.
--   **Forwarding to Log Channel Fails:** Ensure the `LOG_CHANNEL_ID` is correct and that the bot has been added as an administrator to the channel with permission to post messages.
--   **Forwarded Messages Not Working:** Check debug logs to see if the message is being detected as forwarded and if file extraction is successful.
+**Common issues:**
+
+- **Check environment variables** — ensure `API_ID`, `API_HASH`, `BOT_TOKEN`, and `BASE_URL` are set correctly in `.env`
+- **Review logs** — `docker-compose logs -f` shows errors during startup and operation
+- **Permissions** — make sure the `.cache` directory has correct write permissions
+- **Log channel forwarding fails** — ensure `LOG_CHANNEL_ID` is correct and the bot is an admin in that channel
+- **Forwarded messages not working** — enable debug logs and check forwarded-message detection and file extraction
 
 ---
 
+## 🤝 Contributing
+
+Contributions are welcome! Fork the repository, create a branch for your feature or bug fix, and submit a pull request with a clear description of your changes. Check the [issues](https://github.com/mshafiee/webbridgebot/issues) page for ideas on how to help.
+
+## 📄 License
+
+WebBridgeBot is released under the **GNU General Public License v3.0**. See the [LICENSE](LICENSE) file for details.
+
+<p align="center"><img src="assets/divider.svg" width="80%" alt=""></p>
+
 ## نسخه فارسی (Persian Version)
 
-# WebBridgeBot
+<p align="center">
+  <img src="assets/hero-banner.svg" alt="WebBridgeBot — پخش رسانه تلگرام در مرورگر شما" width="100%">
+</p>
 
-پروژه WebBridgeBot یک ربات تلگرامی است که به عنوان پلی بین تلگرام و مرورگر وب شما عمل می‌کند. این ربات به شما امکان می‌دهد هر فایل ویدیویی، صوتی یا تصویری را به آن ارسال کرده و فوراً یک لینک خصوصی دریافت کنید. این لینک یک پخش‌کننده رسانه مبتنی بر وب را باز می‌کند که محتوا را مستقیماً از ربات استریم کرده و امکان پخش یکپارچه بر روی دستگاه‌هایی مانند تلویزیون، کنسول‌های بازی یا هر مرورگر وب مدرنی را فراهم می‌کند.
+<p align="center">
+  هر ویدیو، فایل صوتی یا تصویری را به ربات تلگرام فوروارد کنید و بلافاصله یک لینک خصوصی و غیرقابل حدس بگیرید<br>
+  که آن را در یک پخش‌کننده وب زیبا روی <b>هر دستگاهی</b> پخش می‌کند: تلویزیون، کنسول بازی، موبایل، مرورگر.
+</p>
 
 <p align="center">
   <img src="assets/web-player-screenshot.png" alt="رابط وب پخش‌کننده WebBridgeBot" width="800">
@@ -226,192 +203,122 @@ docker-compose logs -f | grep DEBUG
 
 ---
 
+### 🔀 نحوه کار
+
+<p align="center">
+  <img src="assets/how-it-works.svg" alt="فوروارد رسانه به ربات، دریافت لینک امن، باز کردن پخش‌کننده وب و استریم از طریق وب‌سوکت" width="100%">
+</p>
+
+1. **ارسال رسانه** — ویدیو، صوت یا عکس را در چت خصوصی به ربات ارسال یا فوروارد کنید.
+2. **ایجاد لینک** — ربات فایل را پردازش کرده، یک URL امن مبتنی بر هش تولید می‌کند و آن را همراه پنل کنترل ارسال می‌کند.
+3. **باز کردن پخش‌کننده** — URL را در هر مرورگری باز کنید. صفحه وب از طریق وب‌سوکت به ربات متصل می‌شود.
+4. **پخش رسانه** — اطلاعات رسانه از طریق وب‌سوکت دریافت می‌شود و سپس محتوای فایل مستقیماً از سرور ربات استریم می‌شود.
 ### ✨ ویژگی‌ها
 
 #### 🎬 رسانه و استریمینگ
-- **پشتیبانی جامع از رسانه:** پخش مستقیم ویدیو، فایل‌های صوتی و تصاویر از تلگرام به هر مرورگر وب
-- **فوروارد هر رسانه‌ای:** فوروارد فایل‌های رسانه از هر چت یا کانالی مستقیماً به ربات برای استریم فوری
-- **درخواست‌های محدوده HTTP:** پشتیبانی کامل از استریمینگ محتوای جزئی، امکان جابجایی روان در ویدیوها و صوت‌ها
-- **کش باینری هوشمند:** سیستم کش دیسک مبتنی بر LRU که تکه‌های فایل‌های پرکاربرد را برای پخش فوری ذخیره می‌کند
-- **ویژوالایزر صوتی:** آنالایزر طیف صوتی زیبا و لحظه‌ای با استفاده از AudioMotion برای تجربه‌ای غرق‌کننده
-- **پخش با کیفیت بالا:** پخش‌کننده‌های رسانه HTML5 بومی با کنترل‌های کامل مرورگر و میانبرهای صفحه‌کلید
+
+- **پشتیبانی جامع از رسانه** — پخش مستقیم ویدیو، صوت و تصویر از هر چت یا کانال
+- **درخواست‌های محدوده HTTP** — جابجایی روان در ویدیوها و صوت‌ها
+- **کش باینری هوشمند** — کش دیسک مبتنی بر LRU برای تکه‌های پرکاربرد و پخش فوری
+- **ویژوالایزر صوتی** — آنالایزر طیف صوتی لحظه‌ای (AudioMotion) برای تجربه‌ای غرق‌کننده
 
 #### ⚡ ارتباط لحظه‌ای
-- **یکپارچگی وب‌سوکت:** ارتباط دوطرفه فوری بین ربات تلگرام و پخش‌کننده وب
-- **کنترل از راه دور:** کنترل پخش مستقیماً از تلگرام با استفاده از دکمه‌های درون‌خطی (پخش/توقف، جابجایی ±۱۰ ثانیه، شروع مجدد، تمام‌صفحه)
-- **به‌روزرسانی وضعیت زنده:** اعلان‌های لحظه‌ای وضعیت اتصال و حالت پخش
-- **بارگذاری فوری رسانه:** رسانه بلافاصله پس از ارسال به ربات در پخش‌کننده وب ظاهر می‌شود
+
+- **یکپارچگی وب‌سوکت** — ارتباط دوطرفه فوری بین ربات تلگرام و پخش‌کننده وب
+- **کنترل از راه دور** — پخش/توقف، جابجایی ±۱۰ ثانیه، شروع مجدد و تمام‌صفحه از دکمه‌های درون‌خطی تلگرام
+- **به‌روزرسانی وضعیت زنده** — نمایش لحظه‌ای وضعیت اتصال و حالت پخش
 
 #### 🔒 امنیت و کنترل دسترسی
-- **سیستم مجوزدهی قوی:** اولین کاربر به طور خودکار ادمین می‌شود با تمام اختیارات کنترلی
-- **مجوزهای دقیق:** ادمین‌ها می‌توانند کاربران را مجاز کنند، حق ادمین بدهند یا دسترسی را لغو کنند
-- **تولید URL امن:** احراز هویت مبتنی بر هش تضمین می‌کند URL های رسانه قابل حدس زدن یا اشتراک‌گذاری نیستند
-- **ماندگاری نشست:** ذخیره‌سازی امن نشست مبتنی بر SQLite با مدیریت خاموش شدن ایمن
 
-#### 👨‍💼 ویژگی‌های ادمین
-- **دستورات مدیریت کاربر:** `/authorize`، `/deauthorize`، `/listusers`، `/userinfo`
-- **اعلان‌های ادمین:** هشدارهای خودکار هنگامی که کاربران جدید درخواست دسترسی می‌کنند با دکمه‌های تأیید یک‌کلیکی
-- **نظارت رسانه:** فوروارد اختیاری تمام رسانه‌ها به کانال لاگ خصوصی با نسبت دادن کاربر
-- **لیست‌های کاربر صفحه‌بندی شده:** مرور کارآمد تمام کاربران با اطلاعات دقیق وضعیت
+- **URL امن مبتنی بر هش** — لینک‌های رسانه قابل حدس زدن یا اشتراک‌گذاری نیستند
+- **مجوزدهی قوی** — اولین کاربر ادمین می‌شود؛ بقیه کاربران باید توسط ادمین تأیید شوند
+- **ماندگاری نشست** — نشست‌های امن مبتنی بر SQLite با مدیریت خاموش شدن ایمن
 
 #### 🎨 رابط وب مدرن
-- **تم تاریک زیبا:** طراحی گلس‌مورفیسم با لهجه‌های گرادیانت و انیمیشن‌های روان
-- **کاملاً واکنش‌گرا:** بدون مشکل روی دسکتاپ، تبلت، گوشی‌های هوشمند، تلویزیون‌های هوشمند و کنسول‌های بازی کار می‌کند
-- **آواتار پروفایل:** نمایش عکس‌های پروفایل کاربر که مستقیماً از تلگرام دریافت می‌شوند
-- **نوار کاربران اخیر:** جابجایی سریع بین نشست‌های کاربری متعدد با تاریخچه مبتنی بر localStorage
-- **دسترس‌پذیری:** ناوبری کامل صفحه‌کلید، برچسب‌های ARIA و پشتیبانی از حرکت کاهش‌یافته
 
-#### 🚀 عملکرد و قابلیت اطمینان
-- **عملیات ناهمزمان:** ذخیره‌سازی متادیتا در پس‌زمینه با debouncing برای به حداقل رساندن I/O دیسک
-- **استفاده بهینه از حافظه:** معماری تکه با اندازه ثابت با حذف LRU برای مدیریت بهینه کش
-- **مدیریت خطای ایمن:** بازیابی جامع خطا با پیام‌های وضعیت کاربرپسند
-- **آماده Docker:** پشتیبانی کامل از کانتینری‌سازی با Docker Compose برای استقرار آسان
-- **چندسکویی:** نوشته شده در Go برای عملکرد عالی در تمام سیستم‌عامل‌ها
+- **تم تاریک زیبا** — طراحی گلس‌مورفیسم با لهجه‌های گرادیانت و انیمیشن‌های روان
+- **کاملاً واکنش‌گرا** — دسکتاپ، تبلت، گوشی هوشمند، تلویزیون هوشمند و کنسول بازی
+- **آواتار پروفایل و نوار کاربران اخیر** — عکس پروفایل تلگرام و جابجایی سریع بین نشست‌ها
+- **دسترس‌پذیری** — ناوبری کامل صفحه‌کلید، برچسب‌های ARIA و پشتیبانی از حرکت کاهش‌یافته
 
-### 🛠️ فناوری‌ها
+### 🚀 راه‌اندازی سریع
 
-- **بک‌اند:** Go نسخه 1.21+ با Gorilla Mux برای مسیریابی و وب‌سوکت
-- **API تلگرام:** gotgproto (wrapper برای TDLib) با پشتیبانی کامل MTProto
-- **پایگاه داده:** SQLite برای مدیریت کاربر و ذخیره‌سازی نشست
-- **کش:** کش باینری سفارشی با حذف LRU و پایداری ناهمزمان
-- **فرانت‌اند:** JavaScript خالص با APIهای رسانه HTML5 و انیمیشن‌های CSS3
-- **ویژوالایزر صوتی:** AudioMotion Analyzer برای نمایش طیف لحظه‌ای
-- **پیکربندی:** Viper + Cobra برای مدیریت انعطاف‌پذیر پیکربندی (env، flags، files)
-- **کانتینری‌سازی:** Docker و Docker Compose برای استقرار ساده‌شده
+> **پیش‌نیازها:** Docker و Docker Compose · `API ID` و `API Hash` تلگرام از [my.telegram.org](https://my.telegram.org/) · توکن ربات از [@BotFather](https://t.me/BotFather)
 
-### ⚙️ نحوه کار
-
-1.  **ارسال رسانه:** شما یک فایل رسانه (ویدیو، صوت، عکس) را به ربات در یک چت خصوصی ارسال یا فوروارد می‌کنید.
-2.  **ایجاد لینک:** ربات فایل را پردازش کرده، یک URL منحصربه‌فرد و امن ایجاد می‌کند و آن را به همراه یک پنل کنترل برای شما ارسال می‌کند.
-3.  **باز کردن پخش‌کننده:** شما URL را در هر مرورگری باز می‌کنید. صفحه وب یک اتصال وب‌سوکت به ربات برقرار می‌کند.
-4.  **پخش رسانه:** ربات اطلاعات رسانه (مانند نام فایل و نوع) را از طریق وب‌سوکت به پخش‌کننده ارسال می‌کند. سپس پخش‌کننده شروع به استریم محتوای فایل مستقیماً از سرور ربات می‌کند.
-
-### 📋 پیش‌نیازها
-
-- **داکر و داکر کامپوز (Docker & Docker Compose):** برای راه‌اندازی پیشنهادی به صورت کانتینری مورد نیاز است.
-- **زبان Go (نسخه 1.21 به بالا):** تنها در صورتی که قصد دارید برنامه را به صورت دستی از سورس کامپایل کنید، لازم است.
-- **اطلاعات API تلگرام:**
-    - `API ID` و `API Hash`: این مقادیر را از [my.telegram.org](https://my.telegram.org/) دریافت کنید.
-    - `توکن ربات (Bot Token)`: یک ربات جدید در [@BotFather](https://t.me/BotFather) در تلگرام ایجاد کرده و توکن آن را دریافت کنید.
-- **(اختیاری) یک کانال تلگرام برای لاگ:** اگر می‌خواهید از قابلیت نظارت استفاده کنید، یک کانال عمومی یا خصوصی ایجاد کنید تا ربات تمام رسانه‌ها را به آنجا فوروارد کند. ربات باید به عنوان ادمین با دسترسی ارسال پیام به کانال اضافه شود.
-
-### 🔑 مدیریت کاربران و ادمین
-
-این ربات شامل یک سیستم احراز هویت امن برای کنترل دسترسی است.
-
--   **اولین ادمین:** اولین کاربری که با ربات تعامل می‌کند (با ارسال دستور `/start`) به طور خودکار اختیارات ادمین را دریافت می‌کند.
--   **اختیارات ادمین:** ادمین‌ها اعلان‌هایی برای کاربران جدید دریافت کرده و می‌توانند با دستورات زیر دسترسی‌ها را مدیریت کنند.
--   **مجوزدهی:** تمام کاربران بعدی باید به صورت دستی توسط یک ادمین تأیید شوند تا بتوانند از ربات استفاده کنند. از کاربران غیرمجاز خواسته می‌شود تا درخواست دسترسی دهند.
-
-#### دستورات ادمین
-
--   `/authorize <user_id>`: به یک کاربر مجوز استفاده از ربات را می‌دهد.
--   `/authorize <user_id> admin`: به یک کاربر مجوز استفاده داده و او را به سطح ادمین ارتقا می‌دهد.
--   `/deauthorize <user_id>`: دسترسی یک کاربر به ربات را لغو می‌کند.
--   `/listusers`: لیستی صفحه‌بندی شده از تمام کاربران و وضعیت آن‌ها را نمایش می‌دهد.
--   `/userinfo <user_id>`: اطلاعات دقیقی در مورد یک کاربر خاص نمایش می‌دهد.
-
-### 🚀 نصب و راه‌اندازی (روش پیشنهادی)
-
-استفاده از داکر کامپوز ساده‌ترین راه برای اجرای WebBridgeBot است.
-
-**۱. کلون کردن مخزن**
+**۱. کلون مخزن**
 
 ```bash
 git clone https://github.com/mshafiee/webbridgebot.git
 cd webbridgebot
 ```
 
-**۲. ایجاد فایل `.env`**
-
-فایلی با نام `.env` در ریشه پروژه ایجاد کرده و محتوای زیر را در آن کپی کنید. مقادیر پیش‌فرض را با اطلاعات واقعی خود جایگزین کنید.
+**۲. ساخت فایل `.env`**
 
 ```plaintext
-# .env - پیکربندی API تلگرام
+# .env - تنظیمات API تلگرام
 API_ID=1234567
 API_HASH=a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4
 BOT_TOKEN=1234567890:ABC-DEF1234ghIkl-zyx57W2v1u123ew11
 
-# پیکربندی سرور وب و URL
-# اگر سرور شما به صورت عمومی در دسترس است، localhost را با IP یا دامنه سرور خود جایگزین کنید
+# تنظیمات وب‌سرور و URL
+# اگر عمومی است، localhost را با IP یا دامنه سرور خود جایگزین کنید
 BASE_URL=http://localhost:8080
 PORT=8080
 
-# (اختیاری) پیکربندی کش
+# (اختیاری) تنظیمات کش
 HASH_LENGTH=8
-MAX_CACHE_SIZE=10737418240 # 10 گیگابایت به بایت
-CACHE_DIRECTORY=.cache
+MAX_CACHE_SIZE=10737418240
 
-# (اختیاری) کانال نظارت ادمین
-# شناسه کانالی که تمام رسانه‌ها به آن فوروارد می‌شود. ربات باید در این کانال ادمین باشد.
-# برای کانال‌های عمومی، نام کاربری کانال است (@channel_username). برای کانال‌های خصوصی، معمولاً یک عدد منفی بزرگ است.
-# می‌توانید با فوروارد کردن یک پیام از کانال به رباتی مانند @userinfobot، شناسه آن را پیدا کنید.
-# مثال: LOG_CHANNEL_ID=-1001234567890
+# (اختیاری) کانال نظارت — جدول متغیرهای محیطی را ببینید
 LOG_CHANNEL_ID=0
 ```
 
-**۳. اجرا با داکر کامپوز**
-
-ربات را در پس‌زمینه اجرا کنید:
+**۳. اجرا با Docker Compose**
 
 ```bash
 docker-compose up -d
 ```
 
--   **مشاهده لاگ‌ها:** `docker-compose logs -f`
--   **متوقف کردن ربات:** `docker-compose down`
+| | |
+|---|---|
+| 📜 **مشاهده لاگ‌ها** | `docker-compose logs -f` |
+| 🛑 **توقف ربات** | `docker-compose down` |
 
-### 🔧 متغیرهای محیطی
+> 💡 اگر می‌خواهید از سورس بیلد بگیرید، به Go نسخه 1.21+ نیاز دارید — تارگت‌های بیلد را در `Makefile` ببینید.
 
-این متغیرها می‌توانند در فایل `.env` یا مستقیماً در محیط شما تنظیم شوند.
+<p align="center"><img src="assets/divider.svg" width="80%" alt=""></p>
+### ⚙️ متغیرهای محیطی
 
-| متغیر            | توضیحات                                                        | پیش‌فرض          | الزامی  |
-| ----------------- | --------------------------------------------------------------- | ----------------- | -------- |
-| `API_ID`          | شناسه API تلگرام شما.                                          | -                 | **بله**  |
-| `API_HASH`        | هش API تلگرام شما.                                             | -                 | **بله**  |
-| `BOT_TOKEN`       | توکن ربات تلگرام شما.                                          | -                 | **بله**  |
-| `BASE_URL`        | URL عمومی که پخش‌کننده وب ربات در آن میزبانی می‌شود.           | `http://localhost:8080` | **بله**  |
-| `PORT`            | پورتی که سرور وب بر روی آن اجرا می‌شود.                          | `8080`            | خیر      |
-| `HASH_LENGTH`     | طول هش کوتاه استفاده شده در URLهای رسانه.                      | `8`               | خیر      |
-| `MAX_CACHE_SIZE`  | حداکثر حجم کش دیسک به بایت.                                     | `10737418240` (10GB) | خیر      |
-| `CACHE_DIRECTORY` | دایرکتوری برای ذخیره تکه‌های رسانه کش شده و پایگاه داده.         | `.cache`          | خیر      |
-| `DEBUG_MODE`      | برای فعال کردن لاگ‌های کامل، `true` تنظیم کنید.                   | `false`           | خیر      |
-| `LOG_CHANNEL_ID`  | شناسه اختیاری کانالی برای فوروارد کردن تمام رسانه‌ها جهت ثبت. ربات باید در آن کانال ادمین باشد. | `0` (غیرفعال) | خیر      |
+| متغیر | توضیح | پیش‌فرض | الزامی |
+|---|---|---|---|
+| `API_ID` | شناسه API تلگرام شما از [my.telegram.org](https://my.telegram.org/) | — | **بله** |
+| `API_HASH` | API Hash تلگرام شما | — | **بله** |
+| `BOT_TOKEN` | توکن ربات تلگرام شما از [@BotFather](https://t.me/BotFather) | — | **بله** |
+| `BASE_URL` | URL عمومی که پخش‌کننده وب ربات در آن میزبانی می‌شود | `http://localhost:8080` | **بله** |
+| `PORT` | پورتی که سرور وب روی آن اجرا می‌شود | `8080` | خیر |
+| `HASH_LENGTH` | طول هش کوتاه استفاده‌شده در URLهای رسانه | `8` | خیر |
+| `MAX_CACHE_SIZE` | حداکثر حجم کش دیسک به بایت | `10737418240` (10GB) | خیر |
+| `CACHE_DIRECTORY` | دایرکتوری ذخیره تکه‌های رسانه کش‌شده و پایگاه داده | `.cache` | خیر |
+| `DEBUG_MODE` | برای فعال کردن لاگ کامل، `true` تنظیم کنید | `false` | خیر |
+| `LOG_CHANNEL_ID` | کانال اختیاری برای فوروارد تمام رسانه‌ها جهت ثبت. ربات باید ادمین آن کانال باشد. برای کانال‌های عمومی `@channel_username` و برای کانال‌های خصوصی شناسه عددی (مثل `-1001234567890`، قابل دریافت از [@userinfobot](https://t.me/userinfobot)) | `0` (غیرفعال) | خیر |
 
-### 🤝 مشارکت
+### 🔑 مدیریت کاربران و ادمین
 
-از مشارکت شما استقبال می‌کنیم! لطفاً مخزن را فورک کرده، یک شاخه برای ویژگی یا رفع اشکال خود ایجاد کنید و یک درخواست ادغام (pull request) با توضیحات واضح از تغییرات خود ارسال کنید. برای یافتن ایده‌هایی برای کمک، به بخش issues مراجعه کنید.
+اولین کاربری که دستور `/start` را ارسال کند به طور خودکار **ادمین** می‌شود. بقیه کاربران باید قبل از استفاده از ربات تأیید شوند — کاربران غیرمجاز پیام درخواست دسترسی می‌بینند و ادمین‌ها اعلان تأیید یک‌کلیکی دریافت می‌کنند.
 
-### 📄 مجوز
+| دستور | عملکرد |
+|---|---|
+| `/authorize <user_id>` | مجاز کردن یک کاربر |
+| `/authorize <user_id> admin` | مجاز کردن کاربر و اعطای حق ادمین |
+| `/deauthorize <user_id>` | لغو دسترسی یک کاربر |
+| `/listusers` | لیست صفحه‌بندی‌شده تمام کاربران و وضعیت آن‌ها |
+| `/userinfo <user_id>` | اطلاعات دقیق یک کاربر خاص |
 
-پروژه WebBridgeBot تحت **مجوز عمومی همگانی گنو نسخه ۳.۰ (GNU General Public License v3.0)** منتشر شده است. برای جزئیات بیشتر به فایل `LICENSE` مراجعه کنید.
+> 🎥 **نظارت رسانه (اختیاری):** با تنظیم `LOG_CHANNEL_ID` تمام رسانه‌ها با نسبت‌دادن کاربر به یک کانال لاگ خصوصی فوروارد می‌شوند.
 
-### 🐛 حالت دیباگ (Debug Mode)
+### 🐛 حالت دیباگ و عیب‌یابی
 
-WebBridgeBot شامل یک سیستم لاگ‌گیری جامع برای کمک به عیب‌یابی مشکلات مربوط به پیام‌های فوروارد شده و استریمینگ رسانه است.
-
-**فعال‌سازی حالت دیباگ:**
-
-متغیر `DEBUG_MODE=true` را در فایل `.env` یا متغیرهای محیطی خود تنظیم کنید:
-
-```plaintext
-DEBUG_MODE=true
-```
-
-**لاگ‌های دیباگ شامل:**
-
-- **پیام‌های دریافتی:** لاگ کامل تمام پیام‌های ورودی با اطلاعات فرستنده، پیش‌نمایش متن، نوع رسانه و وضعیت فوروارد
-- **دریافت دستورات:** لاگ برای تمام دستورات (/start, /authorize, /deauthorize, /listusers, /userinfo)
-- **تشخیص پیام‌های فوروارد شده:** جزئیات پیام‌های فوروارد شده (فرستنده اصلی، تاریخ)
-- **پردازش رسانه:** استخراج فایل، حجم، نوع mime، ابعاد و مدت زمان
-- **بررسی مجوزها:** جستجوی پایگاه داده کاربر و تأیید دسترسی
-- **تولید URL فایل:** ایجاد و اعتبارسنجی هش
-- **اتصالات وب‌سوکت:** تلاش‌های اتصال، مجوزدهی و انتشار پیام
-- **استریمینگ HTTP:** درخواست‌های محدوده، واکشی فایل و تأیید هش
-- **فوروارد به کانال لاگ:** فوروارد پیام به کانال‌های نظارتی
-- **کوئری‌های کال‌بک:** کلیک‌های دکمه و تعاملات صفحه‌کلید درون‌خطی
-
-**مشاهده لاگ‌های دیباگ:**
+`DEBUG_MODE=true` را در فایل `.env` تنظیم کنید تا لاگ کامل فعال شود، سپس آن را مشاهده کنید:
 
 ```bash
 # با داکر کامپوز
@@ -421,11 +328,27 @@ docker-compose logs -f | grep DEBUG
 ./webbridgebot | grep DEBUG
 ```
 
-### 🛠️ عیب‌یابی
+لاگ‌های دیباگ شامل پیام‌های دریافتی، تشخیص پیام‌های فورواردشده، پردازش رسانه (فایل، حجم، MIME، مدت زمان)، بررسی مجوزها، تولید URL فایل، اتصالات وب‌سوکت، استریمینگ HTTP، فوروارد به کانال لاگ و کوئری‌های کال‌بک است.
 
--   **بررسی متغیرهای محیطی:** اطمینان حاصل کنید که تمام متغیرهای مورد نیاز (`API_ID`, `API_HASH`, `BOT_TOKEN`, `BASE_URL`) به درستی در فایل `.env` شما تنظیم شده‌اند.
--   **بررسی لاگ‌ها:** از دستور `docker-compose logs -f` برای بررسی هرگونه خطا در هنگام راه‌اندازی یا عملکرد استفاده کنید.
--   **فعال‌سازی حالت دیباگ:** `DEBUG_MODE=true` را تنظیم کنید تا لاگ‌های دقیق برای تمام عملیات دریافت کنید، به‌ویژه برای تشخیص مشکلات پیام‌های فوروارد شده مفید است.
--   **مجوزها (Permissions):** مطمئن شوید که دایرکتوری `.cache` دارای مجوزهای نوشتن صحیح برای کانتینر داکر است. داکر کامپوز این مورد را با volumeها مدیریت می‌کند، اما این یک مشکل رایج در تنظیمات دیگر است.
--   **خطا در فوروارد به کانال لاگ:** مطمئن شوید که `LOG_CHANNEL_ID` صحیح است و ربات با دسترسی ارسال پیام به عنوان ادمین به کانال اضافه شده است.
--   **پیام‌های فوروارد شده کار نمی‌کنند:** لاگ‌های دیباگ را بررسی کنید تا ببینید آیا پیام به عنوان فوروارد شده تشخیص داده شده و آیا استخراج فایل موفقیت‌آمیز بوده است.
+**مشکلات رایج:**
+
+- **بررسی متغیرهای محیطی** — مطمئن شوید `API_ID`، `API_HASH`، `BOT_TOKEN` و `BASE_URL` به‌درستی در `.env` تنظیم شده‌اند
+- **بررسی لاگ‌ها** — `docker-compose logs -f` خطاهای راه‌اندازی و عملکرد را نشان می‌دهد
+- **مجوزها** — مطمئن شوید دایرکتوری `.cache` مجوز نوشتن صحیح دارد
+- **خطا در فوروارد به کانال لاگ** — مطمئن شوید `LOG_CHANNEL_ID` صحیح است و ربات ادمین آن کانال است
+- **پیام‌های فورواردشده کار نمی‌کنند** — لاگ دیباگ را فعال کنید و تشخیص فوروارد و استخراج فایل را بررسی کنید
+
+### 🤝 مشارکت
+
+از مشارکت شما استقبال می‌کنیم! لطفاً مخزن را فورک کرده، یک شاخه برای ویژگی یا رفع اشکال خود ایجاد کنید و یک درخواست ادغام (pull request) با توضیحات واضح ارسال کنید. برای یافتن ایده‌های کمک، به بخش [issues](https://github.com/mshafiee/webbridgebot/issues) مراجعه کنید.
+
+### 📄 مجوز
+
+پروژه WebBridgeBot تحت **مجوز عمومی همگانی گنو نسخه ۳.۰ (GNU General Public License v3.0)** منتشر شده است. برای جزئیات بیشتر به فایل [LICENSE](LICENSE) مراجعه کنید.
+
+<p align="center"><img src="assets/divider.svg" width="80%" alt=""></p>
+
+<p align="center">
+  <b>WebBridgeBot</b> — Your Telegram media, streamed anywhere.<br>
+  رسانه تلگرام شما، پخش‌شده در هر کجا.
+</p>

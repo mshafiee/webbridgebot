@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="300" viewBox="0 0 1200 300" role="img" aria-label="WebBridgeBot — stream Telegram media in your browser">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#151833"/>
+      <stop offset="0.55" stop-color="#1c2145"/>
+      <stop offset="1" stop-color="#232a55"/>
+    </linearGradient>
+    <linearGradient id="title" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#a78bdb"/>
+      <stop offset="0.5" stop-color="#8f6fd4"/>
+      <stop offset="1" stop-color="#6f8fe8"/>
+    </linearGradient>
+    <linearGradient id="bridge" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#2dd4bf"/>
+      <stop offset="1" stop-color="#8f6fd4"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#2dd4bf" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#2dd4bf" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1200" height="300" fill="url(#bg)"/>
+  <!-- faint grid -->
+  <g stroke="#3a4180" stroke-opacity="0.18">
+    <path d="M0 60 H1200 M0 120 H1200 M0 180 H1200 M0 240 H1200"/>
+    <path d="M120 0 V300 M240 0 V300 M360 0 V300 M480 0 V300 M600 0 V300 M720 0 V300 M840 0 V300 M960 0 V300 M1080 0 V300"/>
+  </g>
+
+  <!-- Telegram node -->
+  <g transform="translate(140,150)">
+    <rect x="-58" y="-58" width="116" height="116" rx="26" fill="#229ED9" fill-opacity="0.16" stroke="#229ED9" stroke-opacity="0.7" stroke-width="2"/>
+    <path d="M-24 2 L34 -22 L10 24 L2 10 Z M-24 2 L10 -2" fill="none" stroke="#5cc7f2" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+    <text y="82" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="17" fill="#8ea0d8">Telegram</text>
+  </g>
+
+  <!-- bridge wire -->
+  <path id="wire" d="M212 150 C 340 92, 460 92, 588 150 S 836 208, 962 150" fill="none" stroke="url(#bridge)" stroke-width="3" stroke-opacity="0.8"/>
+  <path d="M212 150 C 340 92, 460 92, 588 150 S 836 208, 962 150" fill="none" stroke="#2dd4bf" stroke-width="3" stroke-opacity="0.25" stroke-dasharray="4 10">
+    <animate attributeName="stroke-dashoffset" from="0" to="-112" dur="3.5s" repeatCount="indefinite"/>
+  </path>
+  <!-- packet traveling the wire -->
+  <circle r="7" fill="#2dd4bf">
+    <animateMotion dur="3.5s" repeatCount="indefinite" rotate="auto" path="M212 150 C 340 92, 460 92, 588 150 S 836 208, 962 150"/>
+  </circle>
+  <circle r="16" fill="url(#glow)">
+    <animateMotion dur="3.5s" repeatCount="indefinite" path="M212 150 C 340 92, 460 92, 588 150 S 836 208, 962 150"/>
+  </circle>
+
+  <!-- browser node -->
+  <g transform="translate(1030,150)">
+    <rect x="-66" y="-58" width="132" height="116" rx="22" fill="#8f6fd4" fill-opacity="0.14" stroke="#8f6fd4" stroke-opacity="0.8" stroke-width="2"/>
+    <rect x="-48" y="-36" width="96" height="64" rx="8" fill="#0f1230" stroke="#a78bdb" stroke-width="2"/>
+    <circle cx="-36" cy="-26" r="3.5" fill="#ff6b6b"/>
+    <circle cx="-24" cy="-26" r="3.5" fill="#ffd166"/>
+    <circle cx="-12" cy="-26" r="3.5" fill="#2dd4bf"/>
+    <rect x="-38" y="-14" width="76" height="32" rx="5" fill="none" stroke="#5cc7f2" stroke-width="2"/>
+    <path d="M-16 4 L-16 -6 L4 -1 L-16 4" fill="#5cc7f2"/>
+    <text y="82" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="17" fill="#8ea0d8">Web Player</text>
+  </g>
+
+  <!-- Wordmark -->
+  <g transform="translate(600,262)" text-anchor="middle">
+    <text font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="64" font-weight="700"><tspan fill="url(#title)">Web</tspan><tspan fill="#e6e2fb">Bridge</tspan><tspan fill="url(#title)">Bot</tspan></text>
+    <text y="-28" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="20" letter-spacing="6" fill="#2dd4bf">STREAM TELEGRAM MEDIA IN YOUR BROWSER</text>
+  </g>
+</svg>

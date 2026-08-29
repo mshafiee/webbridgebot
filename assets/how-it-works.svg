@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img" aria-label="How WebBridgeBot works: forward media to the bot, get a secure link, open the web player, stream over WebSocket">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#151833"/>
+      <stop offset="1" stop-color="#1d2248"/>
+    </linearGradient>
+    <linearGradient id="flow" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#229ED9"/>
+      <stop offset="0.5" stop-color="#8f6fd4"/>
+      <stop offset="1" stop-color="#2dd4bf"/>
+    </linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#7d86c4"/>
+    </marker>
+  </defs>
+  <rect width="1200" height="360" fill="url(#bg)"/>
+  <text x="600" y="42" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="21" font-weight="600" letter-spacing="4" fill="#8ea0d8">HOW IT WORKS</text>
+
+  <g stroke="#7d86c4" stroke-width="2.5" marker-end="url(#arrow)" fill="none">
+    <path d="M255 170 H368"/>
+    <path d="M560 170 H673"/>
+    <path d="M865 170 H978"/>
+  </g>
+  <!-- animated data pulses on connectors -->
+  <g fill="#2dd4bf">
+    <circle r="5"><animate attributeName="cx" values="255;364" dur="1.8s" repeatCount="indefinite"/><animate attributeName="cy" values="170;170" dur="1.8s" repeatCount="indefinite"/></circle>
+    <circle r="5"><animate attributeName="cx" values="560;669" dur="1.8s" begin="0.6s" repeatCount="indefinite"/></circle>
+    <circle r="5"><animate attributeName="cx" values="865;974" dur="1.8s" begin="1.2s" repeatCount="indefinite"/></circle>
+  </g>
+
+  <!-- Step 1: Forward -->
+  <g transform="translate(140,170)">
+    <circle r="72" fill="#229ED9" fill-opacity="0.13" stroke="#229ED9" stroke-opacity="0.75" stroke-width="2"/>
+    <path d="M-24 2 L34 -22 L10 24 L2 10 Z M-24 2 L10 -2" fill="none" stroke="#5cc7f2" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+    <text y="106" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="19" font-weight="600" fill="#dcd9f2">1 · Forward Media</text>
+    <text y="130" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="14" fill="#8ea0d8">video · audio · photo</text>
+  </g>
+
+  <!-- Step 2: Secure link -->
+  <g transform="translate(464,170)">
+    <circle r="72" fill="#8f6fd4" fill-opacity="0.13" stroke="#8f6fd4" stroke-opacity="0.8" stroke-width="2"/>
+    <rect x="-30" y="-26" width="60" height="44" rx="8" fill="none" stroke="#a78bdb" stroke-width="3"/>
+    <path d="M-14 -26 v-6 a14 14 0 0 1 28 0 v6" fill="none" stroke="#a78bdb" stroke-width="3"/>
+    <circle cy="-4" r="4" fill="#a78bdb"/>
+    <path d="M0 -2 v8" stroke="#a78bdb" stroke-width="3" stroke-linecap="round"/>
+    <text y="106" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="19" font-weight="600" fill="#dcd9f2">2 · Get Secure Link</text>
+    <text y="130" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="14" fill="#8ea0d8">hashed URL · unguessable</text>
+  </g>
+
+  <!-- Step 3: Open player -->
+  <g transform="translate(769,170)">
+    <circle r="72" fill="#5cc7f2" fill-opacity="0.10" stroke="#5cc7f2" stroke-opacity="0.7" stroke-width="2"/>
+    <rect x="-34" y="-24" width="68" height="46" rx="8" fill="#0f1230" stroke="#5cc7f2" stroke-width="3"/>
+    <circle cx="-22" cy="-14" r="2.5" fill="#ff6b6b"/>
+    <circle cx="-14" cy="-14" r="2.5" fill="#ffd166"/>
+    <circle cx="-6" cy="-14" r="2.5" fill="#2dd4bf"/>
+    <path d="M-8 8 L-8 -6 L10 0 L-8 8" fill="#5cc7f2"/>
+    <text y="106" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="19" font-weight="600" fill="#dcd9f2">3 · Open Player</text>
+    <text y="130" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="14" fill="#8ea0d8">any browser · TV · console</text>
+  </g>
+
+  <!-- Step 4: Stream -->
+  <g transform="translate(1058,170)">
+    <circle r="72" fill="#2dd4bf" fill-opacity="0.10" stroke="#2dd4bf" stroke-opacity="0.8" stroke-width="2"/>
+    <path d="M-20 -6 a 24 24 0 0 1 40 0 M-11 4 a 13 13 0 0 1 22 0" fill="none" stroke="#2dd4bf" stroke-width="4" stroke-linecap="round">
+      <animate attributeName="opacity" values="0.4;1;0.4" dur="2.2s" repeatCount="indefinite"/>
+    </path>
+    <circle cy="14" r="5" fill="#2dd4bf"/>
+    <text y="106" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="19" font-weight="600" fill="#dcd9f2">4 · Stream</text>
+    <text y="130" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="14" fill="#8ea0d8">WebSocket + HTTP range</text>
+  </g>
+
+  <!-- underlying tech bar -->
+  <g font-family="Segoe UI, Helvetica, Arial, sans-serif" text-anchor="middle">
+    <rect x="160" y="312" width="880" height="30" rx="15" fill="#0f1230" stroke="#2c3364" stroke-width="1.5"/>
+    <text x="600" y="332" font-size="14" fill="#7d86c4">Go · gotgproto (MTProto) · WebSocket · SQLite · LRU binary cache · Docker</text>
+  </g>
+</svg>
