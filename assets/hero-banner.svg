@@ -60,8 +60,8 @@
   </g>
 
   <!-- Wordmark -->
-  <g transform="translate(600,262)" text-anchor="middle">
-    <text font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="64" font-weight="700"><tspan fill="url(#title)">Web</tspan><tspan fill="#e6e2fb">Bridge</tspan><tspan fill="url(#title)">Bot</tspan></text>
-    <text y="-28" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="20" letter-spacing="6" fill="#2dd4bf">STREAM TELEGRAM MEDIA IN YOUR BROWSER</text>
+  <g transform="translate(600,0)" text-anchor="middle">
+    <text y="212" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="19" letter-spacing="6" fill="#2dd4bf">STREAM TELEGRAM MEDIA IN YOUR BROWSER</text>
+    <text y="276" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="58" font-weight="700"><tspan fill="url(#title)">Web</tspan><tspan fill="#e6e2fb">Bridge</tspan><tspan fill="url(#title)">Bot</tspan></text>
   </g>
 </svg>

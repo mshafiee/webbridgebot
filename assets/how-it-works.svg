@@ -23,9 +23,9 @@
   </g>
   <!-- animated data pulses on connectors -->
   <g fill="#2dd4bf">
-    <circle r="5"><animate attributeName="cx" values="255;364" dur="1.8s" repeatCount="indefinite"/><animate attributeName="cy" values="170;170" dur="1.8s" repeatCount="indefinite"/></circle>
-    <circle r="5"><animate attributeName="cx" values="560;669" dur="1.8s" begin="0.6s" repeatCount="indefinite"/></circle>
-    <circle r="5"><animate attributeName="cx" values="865;974" dur="1.8s" begin="1.2s" repeatCount="indefinite"/></circle>
+    <circle r="5" cy="170"><animate attributeName="cx" values="255;364" dur="1.8s" repeatCount="indefinite"/></circle>
+    <circle r="5" cy="170"><animate attributeName="cx" values="560;669" dur="1.8s" begin="0.6s" repeatCount="indefinite"/></circle>
+    <circle r="5" cy="170"><animate attributeName="cx" values="865;974" dur="1.8s" begin="1.2s" repeatCount="indefinite"/></circle>
   </g>
 
   <!-- Step 1: Forward -->
